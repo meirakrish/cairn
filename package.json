@@ -13,7 +13,11 @@
     "test": "pnpm -r test",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "infra:up": "kubectl --context ${KUBE_CONTEXT:-cairn} apply -k deploy/overlays/minikube",
+    "infra:status": "kubectl --context ${KUBE_CONTEXT:-cairn} -n cairn get pods,pvc,jobs",
+    "infra:forward": "scripts/infra-forward.sh",
+    "infra:reset": "kubectl --context ${KUBE_CONTEXT:-cairn} delete -k deploy/overlays/minikube"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
