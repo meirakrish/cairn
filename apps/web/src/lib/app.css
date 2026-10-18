@@ -1,0 +1,91 @@
+:root {
+  --fg: #1f2328;
+  --muted: #59636e;
+  --bg: #ffffff;
+  --border: #d1d9e0;
+  --accent: #2f6f4f;
+  --error: #b42318;
+  font-family: system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --bg: #0d1117;
+    --border: #3d444d;
+    --accent: #5fb98a;
+    --error: #ff7b72;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-weight: 600;
+  color: inherit;
+  text-decoration: none;
+  margin-right: auto;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+}
+
+.who img {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+}
+
+main {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+button {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.signin {
+  text-align: center;
+  margin-top: 4rem;
+}
+
+.signin p {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--error);
+}
