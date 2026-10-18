@@ -10,7 +10,7 @@
     "dev": "pnpm --parallel --filter @cairn/api --filter @cairn/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "vitest run",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -31,6 +31,7 @@
     "prettier": "^3.9.10",
     "prettier-plugin-svelte": "^4.1.1",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.71.2"
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.5"
   }
 }

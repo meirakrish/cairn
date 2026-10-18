@@ -24,9 +24,15 @@ export class SessionStore {
     private config: Config,
   ) {}
 
-  async create(res: Response, data: SessionData): Promise<void> {
+  // Stores a new session and returns its id (the cookie value).
+  async start(data: SessionData): Promise<string> {
     const sid = randomBytes(32).toString('base64url');
     await this.redis.set(key(sid), JSON.stringify(data), 'EX', SESSION_TTL_SECONDS);
+    return sid;
+  }
+
+  async create(res: Response, data: SessionData): Promise<void> {
+    const sid = await this.start(data);
     res.cookie(SESSION_COOKIE, sid, {
       httpOnly: true,
       sameSite: 'lax',
@@ -43,9 +49,14 @@ export class SessionStore {
     return raw ? (JSON.parse(raw) as SessionData) : undefined;
   }
 
-  async destroy(req: Request, res: Response): Promise<void> {
+  // Deletes the request's session from Redis, leaving the cookie alone.
+  async revoke(req: Request): Promise<void> {
     const sid = readCookie(req, SESSION_COOKIE);
     if (sid) await this.redis.del(key(sid));
+  }
+
+  async destroy(req: Request, res: Response): Promise<void> {
+    await this.revoke(req);
     res.clearCookie(SESSION_COOKIE, { path: '/' });
   }
 }

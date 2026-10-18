@@ -90,7 +90,8 @@ export function googleAuthRouter(deps: {
         name: p.name ?? null,
         avatarUrl: p.picture ?? null,
       });
-      await sessions.destroy(req, res);
+      // Rotate: the old session dies and the new cookie replaces it.
+      await sessions.revoke(req);
       await sessions.create(res, { userId: user.id });
       res.redirect('/');
     } catch (err) {
