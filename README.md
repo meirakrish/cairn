@@ -62,19 +62,20 @@ Apps run on WSL with `pnpm dev`; Postgres (pgvector), Redis and Garage (S3-compa
 
 ## Commands
 
-| Command              | What it does                                                   |
-| -------------------- | -------------------------------------------------------------- |
-| `pnpm dev`           | Run api and web in watch mode                                  |
-| `pnpm build`         | Build all packages                                             |
-| `pnpm lint`          | ESLint                                                         |
-| `pnpm typecheck`     | TypeScript and svelte-check                                    |
-| `pnpm format`        | Prettier (`format:check` to verify only)                       |
-| `pnpm db:generate`   | Generate a SQL migration from the Drizzle schema               |
-| `pnpm db:migrate`    | Apply pending migrations as `postgres`                         |
-| `pnpm infra:up`      | Apply the minikube overlay                                     |
-| `pnpm infra:status`  | Show pods, volumes and jobs                                    |
-| `pnpm infra:forward` | Port-forward Postgres, Redis and Garage to localhost           |
-| `pnpm infra:reset`   | Delete everything in the `cairn` namespace, **including data** |
+| Command              | What it does                                                      |
+| -------------------- | ----------------------------------------------------------------- |
+| `pnpm dev`           | Run api and web in watch mode                                     |
+| `pnpm build`         | Build all packages                                                |
+| `pnpm lint`          | ESLint                                                            |
+| `pnpm typecheck`     | TypeScript and svelte-check                                       |
+| `pnpm format`        | Prettier (`format:check` to verify only)                          |
+| `pnpm test`          | Vitest: core and api against `cairn_test` (needs `infra:forward`) |
+| `pnpm db:generate`   | Generate a SQL migration from the Drizzle schema                  |
+| `pnpm db:migrate`    | Apply pending migrations as `postgres`                            |
+| `pnpm infra:up`      | Apply the minikube overlay                                        |
+| `pnpm infra:status`  | Show pods, volumes and jobs                                       |
+| `pnpm infra:forward` | Port-forward Postgres, Redis and Garage to localhost              |
+| `pnpm infra:reset`   | Delete everything in the `cairn` namespace, **including data**    |
 
 The `infra:*` scripts use the kubectl context `cairn`; override with `KUBE_CONTEXT=<name>`. To pause the cluster and keep data, run `minikube stop -p cairn`.
 
@@ -108,3 +109,12 @@ All routes are under `/api` and return JSON. Errors are `{ "error": "..." }`; va
 | `POST /api/cairns`      | yes  | Create a cairn: `{ name, description? }` → 201 |
 
 Request and response shapes are the zod schemas in `packages/shared`.
+
+## Tests
+
+`pnpm test` runs Vitest over `packages/core` and `apps/api` against real Postgres and Redis, using the root `.env` connection settings but a separate `cairn_test` database and Redis db 15, so dev data is untouched. A global setup creates the database (and the `cairn_app` role, if missing), then applies migrations. Each test truncates all tables and flushes the Redis db.
+
+- `packages/core`: `CairnService`, user upsert, and RLS isolation (cross-user reads, writes, spoofed owners, no user set).
+- `apps/api`: supertest over the real app: sessions, logout, Origin check, the Google callback (Google's token exchange and ID token check are mocked), and `/api/cairns`.
+
+Helpers live in `@cairn/core/testing` and `apps/api/src/testing.ts`.

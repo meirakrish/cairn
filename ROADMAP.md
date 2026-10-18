@@ -16,8 +16,8 @@ Working notes for picking the project up in any session. The design is in [DESIG
 | 3    | `packages/core/db`: Drizzle schema + migrations for `users`, `cairns`; RLS on `cairns`                       | done   | `phase1/step3-db`       |
 | 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | done   | `phase1/step4-auth`     |
 | 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | done   | `phase1/step5-cairns`   |
-| 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | next   |                         |
-| 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | todo   |                         |
+| 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | done   | `phase1/step6-tests`    |
+| 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | next   |                         |
 
 Decisions made during planning:
 
@@ -38,15 +38,17 @@ Decisions made during planning:
 - Cairns (step 5): `CairnService` in core runs every query through `withUser`, so RLS (not a `where owner_id`) scopes lists. `embed_model` comes from `EMBED_MODEL` (default `qwen3-embedding:0.6b`). The api maps rows to the shared `Cairn` DTO (`createdAt` as ISO string).
 - api errors: `ZodError` → 400 with `issues`; body-parser 4xx passed through; unknown `/api/*` → 404 JSON; everything else 500.
 - Web: one page at `/`, a sign-in screen or the cairn list plus a create form; `#lib/api.ts` wraps fetch, throws `ApiError`, and parses responses with the shared schemas. Logo is `#lib/Logo.svelte` (stone colours from `--stone-*` CSS vars, top stone `--accent`); `assets/favicon.svg` is the same drawing with fixed colours, so keep them in sync. The header renders only when signed in.
+- Tests (step 6): one root `vitest.config.ts` (Vitest 5), `fileParallelism: false` because files share one DB. Real Postgres/Redis, no DB mocks; only Google (`OAuth2Client.prototype.getToken`/`verifyIdToken`) is mocked. Test DB `cairn_test` (override with `TEST_DATABASE_NAME`) and Redis db 15, derived from `DATABASE_ADMIN_URL`/`DATABASE_URL`/`REDIS_URL`. Global setup creates the app role if missing, so CI can use a bare `pgvector/pgvector` service with only `postgres`.
+- Login rotates the session via `SessionStore.revoke` (old Redis key) + `create`; it no longer clears and sets `cairn_sid` in the same response.
 - DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
 ## Current layout
 
 ```
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; src/lib/api.ts, src/lib/app.css
-apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (router); error handler in app.ts; dev with tsx watch, build with tsdown → dist/index.mjs
+apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (router); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -70,6 +72,8 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - `#lib/*` imports in apps/web need the file extension (`#lib/api.ts`).
 - svelte/no-navigation-without-resolve flags `<a href="/api/...">`; the sign-in uses a `<form method="get">` instead.
 - Augment Express's `Request` through `declare global { namespace Express }` (`apps/api/src/express.d.ts`); `express-serve-static-core` can't be resolved under pnpm.
+- Test files in apps/api can't import `drizzle-orm` directly (it's a core dependency, not an api one); go through `@cairn/core`.
+- Verified the RLS tests bite: disabling RLS on `cairn_test.cairns` fails 6 tests.
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
@@ -80,7 +84,7 @@ pnpm infra:forward  # separate terminal
 pnpm install
 pnpm db:migrate     # after schema changes: pnpm db:generate --name <what>
 pnpm dev            # api :3000 + web :5173
-pnpm lint && pnpm typecheck && pnpm format:check && pnpm build
+pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 ```
 
 ## Later phases
