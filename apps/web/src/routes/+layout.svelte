@@ -3,6 +3,7 @@
   import { resolve } from '$app/paths';
   import favicon from '#lib/assets/favicon.svg';
   import { logout } from '#lib/api.ts';
+  import Logo from '#lib/Logo.svelte';
   import '#lib/app.css';
   import type { LayoutProps } from './$types';
 
@@ -18,9 +19,10 @@
   <link rel="icon" href={favicon} />
 </svelte:head>
 
-<header>
-  <a class="brand" href={resolve('/')}>Cairn</a>
-  {#if data.user}
+<!-- Signed out, the sign-in screen carries the logo itself. -->
+{#if data.user}
+  <header>
+    <a class="brand" href={resolve('/')}><Logo size={28} />Cairn</a>
     <span class="who">
       {#if data.user.avatarUrl}
         <img src={data.user.avatarUrl} alt="" referrerpolicy="no-referrer" />
@@ -28,8 +30,8 @@
       {data.user.name ?? data.user.email}
     </span>
     <button onclick={signOut}>Sign out</button>
-  {/if}
-</header>
+  </header>
+{/if}
 
 <main>
   {@render children()}

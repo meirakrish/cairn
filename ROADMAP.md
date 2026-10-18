@@ -15,8 +15,8 @@ Working notes for picking the project up in any session. The design is in [DESIG
 | 2    | `deploy/`: Kustomize base + minikube overlay (Postgres+pgvector, Redis, Garage), port-forward script, README | done   | `phase1/step2-deploy`   |
 | 3    | `packages/core/db`: Drizzle schema + migrations for `users`, `cairns`; RLS on `cairns`                       | done   | `phase1/step3-db`       |
 | 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | done   | `phase1/step4-auth`     |
-| 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | next   |                         |
-| 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | todo   |                         |
+| 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | done   | `phase1/step5-cairns`   |
+| 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | next   |                         |
 | 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | todo   |                         |
 
 Decisions made during planning:
@@ -35,15 +35,18 @@ Decisions made during planning:
 - Sessions: random 32-byte id in `cairn_sid`; Redis key is `session:<sha256(id)>`, fixed 14-day TTL (no sliding). `Secure` cookies only when `NODE_ENV=production`.
 - Redis client is `ioredis` (BullMQ uses it in Phase 2).
 - `createApp({ config, db, redis })` takes its dependencies so step 6 tests can inject them. Config is parsed with zod in `apps/api/src/config.ts`.
+- Cairns (step 5): `CairnService` in core runs every query through `withUser`, so RLS (not a `where owner_id`) scopes lists. `embed_model` comes from `EMBED_MODEL` (default `qwen3-embedding:0.6b`). The api maps rows to the shared `Cairn` DTO (`createdAt` as ISO string).
+- api errors: `ZodError` → 400 with `issues`; body-parser 4xx passed through; unknown `/api/*` → 404 JSON; everything else 500.
+- Web: one page at `/`, a sign-in screen or the cairn list plus a create form; `#lib/api.ts` wraps fetch, throws `ApiError`, and parses responses with the shared schemas. Logo is `#lib/Logo.svelte` (stone colours from `--stone-*` CSS vars, top stone `--accent`); `assets/favicon.svg` is the same drawing with fixed colours, so keep them in sync. The header renders only when signed in.
 - DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
 ## Current layout
 
 ```
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; src/lib/api.ts, src/lib/app.css
-apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); dev with tsx watch, build with tsdown → dist/index.mjs
+apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (router); error handler in app.ts; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); drizzle/ SQL migrations
+packages/core    src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry

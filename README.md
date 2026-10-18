@@ -94,3 +94,17 @@ Google sign-in is handled entirely by the api (authorization code flow with PKCE
 - `GET /api/auth/google/start` → redirects to Google; `GET /api/auth/google/callback` verifies the ID token, upserts the user and sets the `cairn_sid` cookie (httpOnly, `SameSite=Lax`, 14 days).
 - `GET /api/auth/me` → the current user, or 401. `POST /api/auth/logout` → ends the session.
 - Sessions live in Redis under `session:<sha256(sid)>`. Mutating requests must send `Origin: $APP_ORIGIN`.
+
+## API
+
+All routes are under `/api` and return JSON. Errors are `{ "error": "..." }`; validation errors (400) also carry `issues`.
+
+| Route                   | Auth | What it does                                   |
+| ----------------------- | ---- | ---------------------------------------------- |
+| `GET /api/health`       | no   | Liveness                                       |
+| `GET /api/auth/me`      | yes  | Current user                                   |
+| `POST /api/auth/logout` | yes  | End the session                                |
+| `GET /api/cairns`       | yes  | Your cairns, newest first                      |
+| `POST /api/cairns`      | yes  | Create a cairn: `{ name, description? }` → 201 |
+
+Request and response shapes are the zod schemas in `packages/shared`.

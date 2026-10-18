@@ -7,6 +7,8 @@ const Env = z.object({
   APP_ORIGIN: z.url().default('http://localhost:5173'),
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
+  // Stored on each new cairn; changing it later means re-indexing that cairn.
+  EMBED_MODEL: z.string().min(1).default('qwen3-embedding:0.6b'),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
 });
@@ -21,6 +23,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     secureCookies: e.NODE_ENV === 'production',
     databaseUrl: e.DATABASE_URL,
     redisUrl: e.REDIS_URL,
+    embedModel: e.EMBED_MODEL,
     google: {
       clientId: e.GOOGLE_CLIENT_ID,
       clientSecret: e.GOOGLE_CLIENT_SECRET,
