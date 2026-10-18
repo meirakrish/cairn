@@ -118,3 +118,5 @@ Request and response shapes are the zod schemas in `packages/shared`.
 - `apps/api`: supertest over the real app: sessions, logout, Origin check, the Google callback (Google's token exchange and ID token check are mocked), and `/api/cairns`.
 
 Helpers live in `@cairn/core/testing` and `apps/api/src/testing.ts`.
+
+CI (`.github/workflows/ci.yml`) runs the same checks on every PR and push to `main`, with Postgres (pgvector) and Redis as service containers, plus a `kubectl kustomize` build of the minikube overlay.
