@@ -1,0 +1,21 @@
+{
+  "name": "@cairn/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "build": "tsdown",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@cairn/core": "workspace:*",
+    "@cairn/shared": "workspace:*",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "tsdown": "^0.23.1",
+    "tsx": "^4.23.15"
+  }
+}
