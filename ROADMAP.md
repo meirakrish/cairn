@@ -7,7 +7,7 @@ Working notes for picking the project up in any session. The design is in [DESIG
 - One branch per step: `phase<N>/step<M>-<slug>`, pushed, PR only on request.
 - Update this file before every commit.
 
-## Phase 1: foundation
+## Phase 1: foundation (done)
 
 | Step | What                                                                                                         | Status | Branch                  |
 | ---- | ------------------------------------------------------------------------------------------------------------ | ------ | ----------------------- |
@@ -17,7 +17,7 @@ Working notes for picking the project up in any session. The design is in [DESIG
 | 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | done   | `phase1/step4-auth`     |
 | 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | done   | `phase1/step5-cairns`   |
 | 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | done   | `phase1/step6-tests`    |
-| 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | next   |                         |
+| 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | done   | `phase1/step7-ci`       |
 
 Decisions made during planning:
 
@@ -40,6 +40,7 @@ Decisions made during planning:
 - Web: one page at `/`, a sign-in screen or the cairn list plus a create form; `#lib/api.ts` wraps fetch, throws `ApiError`, and parses responses with the shared schemas. Logo is `#lib/Logo.svelte` (stone colours from `--stone-*` CSS vars, top stone `--accent`); `assets/favicon.svg` is the same drawing with fixed colours, so keep them in sync. The header renders only when signed in.
 - Tests (step 6): one root `vitest.config.ts` (Vitest 5), `fileParallelism: false` because files share one DB. Real Postgres/Redis, no DB mocks; only Google (`OAuth2Client.prototype.getToken`/`verifyIdToken`) is mocked. Test DB `cairn_test` (override with `TEST_DATABASE_NAME`) and Redis db 15, derived from `DATABASE_ADMIN_URL`/`DATABASE_URL`/`REDIS_URL`. Global setup creates the app role if missing, so CI can use a bare `pgvector/pgvector` service with only `postgres`.
 - Login rotates the session via `SessionStore.revoke` (old Redis key) + `create`; it no longer clears and sets `cairn_sid` in the same response.
+- CI (step 7): `.github/workflows/ci.yml`, on push to main and PRs. Job `check` runs format, lint, typecheck, build and test against `pgvector/pgvector` + `redis` service containers (same images as deploy/base, no Redis password); job `deploy` runs `kubectl kustomize` on the minikube overlay after copying `secrets.env.example`. Node from `.nvmrc`, pnpm from `packageManager`.
 - DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
 ## Current layout
@@ -52,6 +53,7 @@ packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, creat
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
+.github/workflows/ci.yml  CI
 ```
 
 ## Gotchas
@@ -74,6 +76,7 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Augment Express's `Request` through `declare global { namespace Express }` (`apps/api/src/express.d.ts`); `express-serve-static-core` can't be resolved under pnpm.
 - Test files in apps/api can't import `drizzle-orm` directly (it's a core dependency, not an api one); go through `@cairn/core`.
 - Verified the RLS tests bite: disabling RLS on `cairn_test.cairns` fails 6 tests.
+- When bumping the Postgres or Redis image in deploy/base, bump the CI service images too.
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
@@ -89,4 +92,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: `embed()`, `stream()`), Phase 3 query, Phase 4 sharing.
+**Next: Phase 2 (ingest), plan to be agreed before code.** See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: `embed()`, `stream()`), Phase 3 query, Phase 4 sharing.
