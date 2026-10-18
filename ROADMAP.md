@@ -13,8 +13,8 @@ Working notes for picking the project up in any session. The design is in [DESIG
 | ---- | ------------------------------------------------------------------------------------------------------------ | ------ | ----------------------- |
 | 1    | pnpm monorepo, Prettier, ESLint, TS base config                                                              | done   | `phase1/step1-monorepo` |
 | 2    | `deploy/`: Kustomize base + minikube overlay (Postgres+pgvector, Redis, Garage), port-forward script, README | done   | `phase1/step2-deploy`   |
-| 3    | `packages/core/db`: Drizzle schema + migrations for `users`, `cairns`; RLS on `cairns`                       | next   |                         |
-| 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | todo   |                         |
+| 3    | `packages/core/db`: Drizzle schema + migrations for `users`, `cairns`; RLS on `cairns`                       | done   | `phase1/step3-db`       |
+| 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | next   |                         |
 | 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | todo   |                         |
 | 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | todo   |                         |
 | 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | todo   |                         |
@@ -28,6 +28,9 @@ Decisions made during planning:
 - Web is plain CSS, no UI library.
 - Dockerfiles and image builds are deferred until apps run in the cluster.
 - Object storage is Garage (`dxflrs/garage`, AGPL, S3 API), not MinIO: MinIO stopped publishing images, and we want a plain open-source project rather than a vendor free tier.
+- Drizzle 0.45 (stable, not the 1.0 beta) with postgres.js. Migrations are drizzle-kit generated SQL, committed, applied with `drizzle-kit migrate` as `postgres`.
+- RLS: `cairns_owner` policy, `owner_id = nullif(current_setting('app.user_id', true), '')::uuid`; no user set → no rows. `users` has no RLS (login looks users up by `google_sub` before a user id exists).
+- `cairns.embed_model` is NOT NULL without a default; `CairnService` (step 5) fills it from config.
 - DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
 ## Current layout
@@ -36,7 +39,7 @@ Decisions made during planning:
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000
 apps/api         Express 5; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types
-packages/core    stub (db + services from step 3)
+packages/core    src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -53,6 +56,8 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Postgres `init-db.sh` only runs on an empty data dir; to rerun it, `pnpm infra:reset` (wipes data) then `pnpm infra:up`.
 - Garage bootstrap Job is idempotent and has `ttlSecondsAfterFinished: 300`; if `infra:up` fails with "field is immutable" on the Job, delete it (`kubectl --context cairn -n cairn delete job garage-bootstrap`) and reapply.
 - Garage `/health` returns 503 until a layout exists, so readiness is a TCP probe. Garage access key IDs must be `GK` + 24 hex chars.
+- `drizzle.config.ts` loads the root `.env` itself (`process.loadEnvFile`), so `pnpm db:migrate` needs `pnpm infra:forward` running.
+- Ad-hoc scripts importing core under tsx: use `.mts` (tsx treats a `.ts` outside a `type: module` package as CJS, so no top-level await).
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
@@ -61,6 +66,7 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 pnpm infra:up       # deploy postgres, redis, garage to minikube (context cairn)
 pnpm infra:forward  # separate terminal
 pnpm install
+pnpm db:migrate     # after schema changes: pnpm db:generate --name <what>
 pnpm dev            # api :3000 + web :5173
 pnpm lint && pnpm typecheck && pnpm format:check && pnpm build
 ```

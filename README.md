@@ -50,10 +50,11 @@ Apps run on WSL with `pnpm dev`; Postgres (pgvector), Redis and Garage (S3-compa
    pnpm infra:forward
    ```
 
-5. Install and run the apps (api on :3000, web on http://localhost:5173, which proxies `/api` to the api):
+5. Install, migrate and run the apps (api on :3000, web on http://localhost:5173, which proxies `/api` to the api):
 
    ```bash
    pnpm install
+   pnpm db:migrate
    pnpm dev
    ```
 
@@ -66,6 +67,8 @@ Apps run on WSL with `pnpm dev`; Postgres (pgvector), Redis and Garage (S3-compa
 | `pnpm lint`          | ESLint                                                         |
 | `pnpm typecheck`     | TypeScript and svelte-check                                    |
 | `pnpm format`        | Prettier (`format:check` to verify only)                       |
+| `pnpm db:generate`   | Generate a SQL migration from the Drizzle schema               |
+| `pnpm db:migrate`    | Apply pending migrations as `postgres`                         |
 | `pnpm infra:up`      | Apply the minikube overlay                                     |
 | `pnpm infra:status`  | Show pods, volumes and jobs                                    |
 | `pnpm infra:forward` | Port-forward Postgres, Redis and Garage to localhost           |
@@ -77,3 +80,7 @@ The `infra:*` scripts use the kubectl context `cairn`; override with `KUBE_CONTE
 
 - `cairn_app`: what the api uses (`DATABASE_URL`). Not a superuser and cannot bypass row-level security.
 - `postgres`: owns the tables and runs migrations (`DATABASE_ADMIN_URL`).
+
+## Schema changes
+
+Edit `packages/core/src/db/schema.ts`, run `pnpm db:generate --name <what>`, review the SQL in `packages/core/drizzle/`, then `pnpm db:migrate`. RLS policies are declared in the schema with `pgPolicy`. Queries that touch RLS tables go through `withUser(db, userId, tx => …)`, which sets `app.user_id` for that transaction.
