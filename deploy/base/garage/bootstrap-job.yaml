@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-bootstrap
+spec:
+  backoffLimit: 10
+  # Finished Jobs are removed so the next `apply` can recreate one (Job specs are immutable).
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: alpine:3.24.2
+          command: [sh, /scripts/bootstrap.sh]
+          env:
+            - name: GARAGE_CAPACITY_BYTES
+              value: '10000000000'
+            - name: S3_BUCKET
+              value: cairn
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cairn-secrets
+                  key: GARAGE_ADMIN_TOKEN
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cairn-secrets
+                  key: S3_ACCESS_KEY_ID
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cairn-secrets
+                  key: S3_SECRET_ACCESS_KEY
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: garage-bootstrap

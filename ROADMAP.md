@@ -1,6 +1,6 @@
 # Cairn roadmap
 
-Working notes for picking the project up in any session. The agreed design is in [DESIGN.md](DESIGN.md); this file tracks progress against it.
+Working notes for picking the project up in any session. The design is in [DESIGN.md](DESIGN.md) (open to revision; update it when a decision changes); this file tracks progress. Dev setup is in [README.md](README.md).
 
 ## Conventions
 
@@ -9,24 +9,26 @@ Working notes for picking the project up in any session. The agreed design is in
 
 ## Phase 1: foundation
 
-| Step | What                                                                                                      | Status | Branch                  |
-| ---- | --------------------------------------------------------------------------------------------------------- | ------ | ----------------------- |
-| 1    | pnpm monorepo, Prettier, ESLint, TS base config                                                           | done   | `phase1/step1-monorepo` |
-| 2    | `deploy/`: Kustomize base + minikube overlay (Postgres+pgvector, Redis, MinIO), port-forward script       | next   |                         |
-| 3    | `packages/core/db`: Drizzle schema + migrations for `users`, `cairns`; RLS on `cairns`                    | todo   |                         |
-| 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                | todo   |                         |
-| 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                   | todo   |                         |
-| 6    | Tests (Vitest + supertest, RLS isolation) and README dev loop                                             | todo   |                         |
-| 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build) | todo   |                         |
+| Step | What                                                                                                         | Status | Branch                  |
+| ---- | ------------------------------------------------------------------------------------------------------------ | ------ | ----------------------- |
+| 1    | pnpm monorepo, Prettier, ESLint, TS base config                                                              | done   | `phase1/step1-monorepo` |
+| 2    | `deploy/`: Kustomize base + minikube overlay (Postgres+pgvector, Redis, Garage), port-forward script, README | done   | `phase1/step2-deploy`   |
+| 3    | `packages/core/db`: Drizzle schema + migrations for `users`, `cairns`; RLS on `cairns`                       | next   |                         |
+| 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | todo   |                         |
+| 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | todo   |                         |
+| 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | todo   |                         |
+| 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | todo   |                         |
 
 Decisions made during planning:
 
 - Drizzle schema and `CairnService` live in `packages/core` (the Phase 2 worker reuses them).
-- Apps run on WSL with `pnpm dev`; infra in minikube reached via `kubectl port-forward` (5432, 6379, 9000/9001).
+- Apps run on WSL with `pnpm dev`; infra in minikube (profile and kubectl context `cairn`, namespace `cairn`) reached via `pnpm infra:forward` (5432, 6379, 3900).
 - Postgres app role is non-superuser so RLS applies; per-request `set_config('app.user_id', …, true)` in a transaction.
 - CSRF: `SameSite=Lax` plus an Origin check on mutating routes.
 - Web is plain CSS, no UI library.
 - Dockerfiles and image builds are deferred until apps run in the cluster.
+- Object storage is Garage (`dxflrs/garage`, AGPL, S3 API), not MinIO: MinIO stopped publishing images, and we want a plain open-source project rather than a vendor free tier.
+- DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
 ## Current layout
 
@@ -35,6 +37,9 @@ apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api →
 apps/api         Express 5; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types
 packages/core    stub (db + services from step 3)
+deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
+deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
+scripts/infra-forward.sh  port-forwards with auto-retry
 ```
 
 ## Gotchas
@@ -45,10 +50,16 @@ packages/core    stub (db + services from step 3)
 - Workspace packages export TypeScript source (`./src/index.ts`); the api bundles them via `noExternal` in `tsdown.config.ts`.
 - TS 6 defaults `types` to `[]`; node packages set `"types": ["node"]`.
 - `DESIGN.md` is in `.prettierignore` so its tables stay as written.
+- Postgres `init-db.sh` only runs on an empty data dir; to rerun it, `pnpm infra:reset` (wipes data) then `pnpm infra:up`.
+- Garage bootstrap Job is idempotent and has `ttlSecondsAfterFinished: 300`; if `infra:up` fails with "field is immutable" on the Job, delete it (`kubectl --context cairn -n cairn delete job garage-bootstrap`) and reapply.
+- Garage `/health` returns 503 until a layout exists, so readiness is a TCP probe. Garage access key IDs must be `GK` + 24 hex chars.
+- psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
 
 ```bash
+pnpm infra:up       # deploy postgres, redis, garage to minikube (context cairn)
+pnpm infra:forward  # separate terminal
 pnpm install
 pnpm dev            # api :3000 + web :5173
 pnpm lint && pnpm typecheck && pnpm format:check && pnpm build
