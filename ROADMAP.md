@@ -14,8 +14,8 @@ Working notes for picking the project up in any session. The design is in [DESIG
 | 1    | pnpm monorepo, Prettier, ESLint, TS base config                                                              | done   | `phase1/step1-monorepo` |
 | 2    | `deploy/`: Kustomize base + minikube overlay (Postgres+pgvector, Redis, Garage), port-forward script, README | done   | `phase1/step2-deploy`   |
 | 3    | `packages/core/db`: Drizzle schema + migrations for `users`, `cairns`; RLS on `cairns`                       | done   | `phase1/step3-db`       |
-| 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | next   |                         |
-| 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | todo   |                         |
+| 4    | Google login: server-side OIDC, Redis session, httpOnly `cairn_sid` cookie                                   | done   | `phase1/step4-auth`     |
+| 5    | Cairns: `POST`/`GET /api/cairns` + web list/create page                                                      | next   |                         |
 | 6    | Tests (Vitest + supertest, RLS isolation)                                                                    | todo   |                         |
 | 7    | CI: GitHub Actions (format, lint, typecheck, build, test with pgvector + Redis services, kustomize build)    | todo   |                         |
 
@@ -31,15 +31,19 @@ Decisions made during planning:
 - Drizzle 0.45 (stable, not the 1.0 beta) with postgres.js. Migrations are drizzle-kit generated SQL, committed, applied with `drizzle-kit migrate` as `postgres`.
 - RLS: `cairns_owner` policy, `owner_id = nullif(current_setting('app.user_id', true), '')::uuid`; no user set → no rows. `users` has no RLS (login looks users up by `google_sub` before a user id exists).
 - `cairns.embed_model` is NOT NULL without a default; `CairnService` (step 5) fills it from config.
+- Auth (step 4): `google-auth-library` code flow with PKCE + state + nonce. State is single-use in Redis (`oauth:state:*`, 10 min, `GETDEL`) and bound to the browser by a `cairn_oauth_state` cookie. Requires `email_verified`. Login always rotates the session id.
+- Sessions: random 32-byte id in `cairn_sid`; Redis key is `session:<sha256(id)>`, fixed 14-day TTL (no sliding). `Secure` cookies only when `NODE_ENV=production`.
+- Redis client is `ioredis` (BullMQ uses it in Phase 2).
+- `createApp({ config, db, redis })` takes its dependencies so step 6 tests can inject them. Config is parsed with zod in `apps/api/src/config.ts`.
 - DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
 ## Current layout
 
 ```
-apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000
-apps/api         Express 5; dev with tsx watch, build with tsdown → dist/index.mjs
-packages/shared  zod schemas/types
-packages/core    src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); drizzle/ SQL migrations
+apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; src/lib/api.ts, src/lib/app.css
+apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); dev with tsx watch, build with tsdown → dist/index.mjs
+packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
+packages/core    src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -58,6 +62,11 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Garage `/health` returns 503 until a layout exists, so readiness is a TCP probe. Garage access key IDs must be `GK` + 24 hex chars.
 - `drizzle.config.ts` loads the root `.env` itself (`process.loadEnvFile`), so `pnpm db:migrate` needs `pnpm infra:forward` running.
 - Ad-hoc scripts importing core under tsx: use `.mts` (tsx treats a `.ts` outside a `type: module` package as CJS, so no top-level await).
+- The api refuses to start without `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in `.env` (zod config).
+- The Google redirect URI points at the web origin (`:5173`), not the api, so the cookie is set on the origin the browser uses; the Vite proxy forwards it.
+- `#lib/*` imports in apps/web need the file extension (`#lib/api.ts`).
+- svelte/no-navigation-without-resolve flags `<a href="/api/...">`; the sign-in uses a `<form method="get">` instead.
+- Augment Express's `Request` through `declare global { namespace Express }` (`apps/api/src/express.d.ts`); `express-serve-static-core` can't be resolved under pnpm.
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands

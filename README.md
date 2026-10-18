@@ -37,6 +37,8 @@ Apps run on WSL with `pnpm dev`; Postgres (pgvector), Redis and Garage (S3-compa
    cp .env.example .env
    ```
 
+   Then fill in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`. In Google Cloud Console → Google Auth Platform: configure the consent screen (External, Testing, add yourself as a test user), then create an OAuth client of type _Web application_ with authorized redirect URI `http://localhost:5173/api/auth/google/callback`.
+
 3. Deploy the infrastructure and wait for it. A one-off Job sets up Garage (layout, access key, `cairn` bucket):
 
    ```bash
@@ -84,3 +86,11 @@ The `infra:*` scripts use the kubectl context `cairn`; override with `KUBE_CONTE
 ## Schema changes
 
 Edit `packages/core/src/db/schema.ts`, run `pnpm db:generate --name <what>`, review the SQL in `packages/core/drizzle/`, then `pnpm db:migrate`. RLS policies are declared in the schema with `pgPolicy`. Queries that touch RLS tables go through `withUser(db, userId, tx => …)`, which sets `app.user_id` for that transaction.
+
+## Auth
+
+Google sign-in is handled entirely by the api (authorization code flow with PKCE, state and nonce):
+
+- `GET /api/auth/google/start` → redirects to Google; `GET /api/auth/google/callback` verifies the ID token, upserts the user and sets the `cairn_sid` cookie (httpOnly, `SameSite=Lax`, 14 days).
+- `GET /api/auth/me` → the current user, or 401. `POST /api/auth/logout` → ends the session.
+- Sessions live in Redis under `session:<sha256(sid)>`. Mutating requests must send `Origin: $APP_ORIGIN`.
