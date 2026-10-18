@@ -1,10 +1,12 @@
-import type { Db } from '@cairn/core';
+import { CairnService, type Db } from '@cairn/core';
 import type { HealthResponse } from '@cairn/shared';
-import express from 'express';
+import express, { type ErrorRequestHandler } from 'express';
 import type { Redis } from 'ioredis';
+import { z } from 'zod';
 import { authRouter } from './auth';
 import { loadUser, originCheck } from './auth/middleware';
 import { SessionStore } from './auth/session';
+import { cairnsRouter } from './cairns';
 import type { Config } from './config';
 
 export interface AppDeps {
@@ -26,6 +28,26 @@ export function createApp({ config, db, redis }: AppDeps) {
     res.json(body);
   });
   app.use('/api/auth', authRouter({ config, db, redis, sessions }));
+  app.use('/api/cairns', cairnsRouter(new CairnService(db, config.embedModel)));
+
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'not found' });
+  });
+  app.use(errorHandler);
 
   return app;
 }
+
+const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof z.ZodError) {
+    res.status(400).json({ error: 'invalid request', issues: z.flattenError(err).fieldErrors });
+    return;
+  }
+  // body-parser errors (bad JSON, too large) carry a 4xx status.
+  if (typeof err?.status === 'number' && err.status < 500) {
+    res.status(err.status).json({ error: err.expose ? err.message : 'bad request' });
+    return;
+  }
+  console.error(err);
+  res.status(500).json({ error: 'internal error' });
+};
