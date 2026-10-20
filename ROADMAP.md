@@ -51,8 +51,8 @@ Decisions made during planning:
 | 1    | llm-kit v0.2 (in the llm-kit repo): `Embedder` (Ollama + OpenAI), `EMBED_*` config, `fakeEmbedder`; published as `0.2.0` | done   | llm-kit `feat/embedder` |
 | 2    | Schema: `sources`, `chunks` (`vector(1024)` + HNSW, generated `tsv` + GIN), RLS via the parent cairn; core services      | done   | `phase2/step2-schema`   |
 | 3    | Upload api: `ObjectStore` over Garage, `GET /api/cairns/:id`, sources list/upload/delete, MIME sniffing, BullMQ enqueue  | done   | `phase2/step3-upload`   |
-| 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                      | next   |                         |
-| 5    | Live status: worker publishes on Redis pub/sub, api streams `GET /api/cairns/:id/events` (SSE)                           | todo   |                         |
+| 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                      | done   | `phase2/step4-worker`   |
+| 5    | Live status: worker publishes on Redis pub/sub, api streams `GET /api/cairns/:id/events` (SSE)                           | next   |                         |
 | 6    | Web: `/cairns/[id]` with drag-and-drop upload, live source list, delete                                                  | todo   |                         |
 
 Each step brings its own tests.
@@ -73,6 +73,16 @@ Step 3 as built:
 - Route ids go through `idParam()`: malformed uuid → 404, like an unknown id. `HttpError` (status + client-safe message) and `NotFoundError` map to responses in the error handler.
 - Checked live against Garage: upload of a Hebrew-named `.md` stored, job queued, delete removed object and job.
 
+Step 4 as built:
+
+- Ingest lives in core (`src/ingest/`: `extract`, `chunkSegments`, `IngestService`, `PermanentIngestError`), so a future MCP server or CLI can reuse it; `apps/worker` is a BullMQ shell (`config.ts`, `processor.ts`, `index.ts`).
+- `IngestService.process(userId, sourceId)`: `markProcessing` (skip if gone or ready) → cairn's `embed_model` must equal the embedder's → `storage.get` → extract → chunk → `embedder.embed` → `sources.complete`. Deleted mid-run → skipped.
+- Errors: `PermanentIngestError` (no text, damaged/huge PDF, too much text, missing file, model mismatch, context overflow) → source failed with that message + BullMQ `UnrecoverableError`. Anything else is rethrown for BullMQ's 3 attempts; the last one marks the source failed with a generic message (internal addresses stay in the logs).
+- Extraction: text as one segment (BOM and CRLF removed); Markdown split at ATX headings outside code fences, with the heading path; PDF per page via `unpdf` (`disableFontFace`, no system fonts, `verbosity: 0`), 2,000 pages, 60 s, pages without text dropped, no text at all → "scanned PDFs need OCR".
+- Chunking: ranges split at `\n\n`, `\n`, sentence ends, `, `, spaces, then a hard cut; greedy packing to 2400 chars; the next chunk starts up to 360 chars back, after the first sentence end (else word boundary) in that window. Chunks never cross segments. A test caught that overlap built from whole ranges gave none for paragraphs longer than the overlap.
+- Worker: `maxRetriesPerRequest: null` Redis connection, concurrency `WORKER_CONCURRENCY` (1), `lockDuration` 120 s, an `embed(['ping'])` at start to load the model (warns if Ollama is down; not fatal). `EMBED_DIMENSIONS` other than 1024 is a startup error.
+- Checked live (Ollama + Garage + Postgres): README.md and DESIGN.md → 10 chunks each with heading paths, a 3-page PDF → 3 chunks with pages, a textless PDF → failed with the OCR message. First job ~11 s (model load), then ~0.2 s. A similarity query for "What marks hiking trails?" ranked the right PDF page first (cosine distance 0.28).
+
 Plan decisions (agreed 2026-10-18):
 
 - `stream()` moves from llm-kit v0.2 to Phase 3, where answers are streamed.
@@ -90,9 +100,10 @@ Plan decisions (agreed 2026-10-18):
 
 ```
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; src/lib/api.ts, src/lib/app.css
+apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry vs fail), index.ts; dev with tsx watch, build with tsdown
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -123,8 +134,12 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Composite-key and unique violations fire in index order: a test meant to hit `chunks_source_fk` hit `chunks_source_ordinal_key` first. Pick values that only break the constraint under test.
 - Ollama is reached from WSL at the Windows host IP (`OLLAMA_HOST=http://172.19.208.1:11434` today; it can change after a reboot). The Windows firewall rules `ollama.exe` are limited to `172.16.0.0/12` with edge traversal blocked (UDP rule disabled), because the PC has public IPv6 addresses.
 - pnpm's `minimumReleaseAge` rejects packages published in the last day. When `pnpm add` offers to add a `minimumReleaseAgeExclude`, don't: pin a slightly older version instead (e.g. `bullmq@~6.3.15`). If a too-new version already landed in the lockfile, restore `pnpm-lock.yaml` and the package.json files first.
+- TODO after 2026-10-21 19:30 UTC: remove the `minimumReleaseAgeExclude` entry for `@meirakrish/llm-kit@0.2.0` in `pnpm-workspace.yaml` (added because the release was minutes old; only our own package may go there).
 - `msgpackr-extract` (bullmq's optional native helper) is `false` in `allowBuilds`: prebuilt binaries are enough.
 - Express 5 types `req.params` values as `string | string[]`; use `idParam()` in `apps/api/src/cairns.ts`.
+- Worker shutdown takes a few seconds: `worker.close()` waits for BullMQ's blocking Redis poll to return.
+- pdf.js 5 dropped `isEvalSupported`; close documents with `pdf.loadingTask.destroy()` (the proxy has no `destroy`).
+- tsx `-e` scripts compile to CJS: wrap top-level `await` in an async IIFE, and run them from a package that depends on what they import (e.g. `packages/core` for drizzle).
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands

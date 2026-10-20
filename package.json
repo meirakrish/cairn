@@ -7,7 +7,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @cairn/api --filter @cairn/web dev",
+    "dev": "pnpm --parallel --filter @cairn/api --filter @cairn/web --filter @cairn/worker dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",

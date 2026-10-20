@@ -1,0 +1,151 @@
+import { fakeEmbedder } from '@meirakrish/llm-kit/testing';
+import { ContextOverflowError } from '@meirakrish/llm-kit';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { CairnService } from '../cairns';
+import { EMBEDDING_DIMENSIONS } from '../db';
+import { SourceService } from '../sources';
+import { MemoryObjectStore } from '../storage';
+import { createTestDbs, createUser, makePdf, resetDb } from '../testing';
+import { PermanentIngestError } from './errors';
+import { IngestService } from './service';
+
+const { admin, app } = createTestDbs();
+const sources = new SourceService(app.db);
+const storage = new MemoryObjectStore();
+
+beforeEach(async () => {
+  await resetDb(admin.db);
+  storage.objects.clear();
+});
+afterAll(async () => {
+  await admin.close();
+  await app.close();
+});
+
+function setup(embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS })) {
+  const cairns = new CairnService(app.db, embedder.model);
+  const ingest = new IngestService({
+    cairns,
+    sources,
+    storage,
+    embedder,
+    chunking: { maxChars: 200, overlapChars: 40 },
+  });
+  return { cairns, ingest, embedder };
+}
+
+async function uploaded(cairns: CairnService, kind: 'text' | 'markdown' | 'pdf', data: Uint8Array) {
+  const user = await createUser(admin.db);
+  const cairn = await cairns.create(user.id, { name: 'C' });
+  const mime = { text: 'text/plain', markdown: 'text/markdown', pdf: 'application/pdf' }[kind];
+  const source = await sources.create(user.id, cairn.id, {
+    kind,
+    filename: 'f',
+    mime,
+    size: data.length,
+  });
+  await storage.put(source.storageKey, data, mime);
+  return { user, source };
+}
+
+const utf8 = (s: string) => new TextEncoder().encode(s);
+
+describe('IngestService', () => {
+  it('extracts, chunks, embeds and stores a Markdown file', async () => {
+    const { cairns, ingest, embedder } = setup();
+    const md = '# Trails\nCairns mark the route.\n\n## Safety\n' + 'Stay on the path. '.repeat(20);
+    const { user, source } = await uploaded(cairns, 'markdown', utf8(md));
+
+    const result = await ingest.process(user.id, source.id);
+
+    const chunks = await sources.listChunks(user.id, source.id);
+    expect(result).toEqual({ status: 'ready', chunks: chunks.length });
+    expect(chunks.length).toBeGreaterThan(2);
+    expect(chunks[0]).toMatchObject({ ordinal: 0, location: { headings: ['Trails'] } });
+    expect(chunks.at(-1)?.location).toEqual({ headings: ['Trails', 'Safety'] });
+    expect(embedder.calls.flat()).toEqual(chunks.map((c) => c.content));
+    expect((await sources.get(user.id, source.id))?.status).toBe('ready');
+  });
+
+  it('keeps PDF page numbers', async () => {
+    const { cairns, ingest } = setup();
+    const { user, source } = await uploaded(cairns, 'pdf', makePdf(['First page', 'Second page']));
+
+    await ingest.process(user.id, source.id);
+    expect((await sources.listChunks(user.id, source.id)).map((c) => c.location)).toEqual([
+      { page: 1 },
+      { page: 2 },
+    ]);
+  });
+
+  it('skips sources that are already ready or deleted', async () => {
+    const { cairns, ingest, embedder } = setup();
+    const { user, source } = await uploaded(cairns, 'text', utf8('hello'));
+    await ingest.process(user.id, source.id);
+
+    expect(await ingest.process(user.id, source.id)).toEqual({
+      status: 'skipped',
+      reason: 'already ready',
+    });
+    await sources.delete(user.id, source.id);
+    expect(await ingest.process(user.id, source.id)).toEqual({ status: 'skipped', reason: 'gone' });
+    expect(embedder.calls).toHaveLength(1);
+  });
+
+  it('runs as the uploader: another user cannot process the source', async () => {
+    const { cairns, ingest } = setup();
+    const { source } = await uploaded(cairns, 'text', utf8('hello'));
+    const other = await createUser(admin.db);
+
+    expect(await ingest.process(other.id, source.id)).toEqual({
+      status: 'skipped',
+      reason: 'gone',
+    });
+  });
+
+  it('fails permanently on files without text, missing files and a different embedding model', async () => {
+    const { cairns, ingest } = setup();
+    const empty = await uploaded(cairns, 'text', utf8('   \n\n  '));
+    await expect(ingest.process(empty.user.id, empty.source.id)).rejects.toThrow(/no text found/);
+
+    const missing = await uploaded(cairns, 'text', utf8('hello'));
+    storage.objects.clear();
+    await expect(ingest.process(missing.user.id, missing.source.id)).rejects.toThrow(
+      /file is missing/,
+    );
+
+    const other = setup(fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS }));
+    const mismatch = await uploaded(new CairnService(app.db, 'old-model'), 'text', utf8('hello'));
+    const err = await other.ingest
+      .process(mismatch.user.id, mismatch.source.id)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PermanentIngestError);
+    expect((err as Error).message).toMatch(/uses the embedding model old-model/);
+  });
+
+  it('turns an embedding context overflow into a permanent error', async () => {
+    const embedder = fakeEmbedder({
+      dimensions: EMBEDDING_DIMENSIONS,
+      fail: () => new ContextOverflowError(9000, 8192),
+    });
+    const { cairns, ingest } = setup(embedder);
+    const { user, source } = await uploaded(cairns, 'text', utf8('hello'));
+
+    await expect(ingest.process(user.id, source.id)).rejects.toThrow(
+      /too long for the embedding model/,
+    );
+  });
+
+  it('lets other embedder errors through for a retry, leaving the source processing', async () => {
+    const embedder = fakeEmbedder({
+      dimensions: EMBEDDING_DIMENSIONS,
+      fail: () => new Error('fetch failed'),
+    });
+    const { cairns, ingest } = setup(embedder);
+    const { user, source } = await uploaded(cairns, 'text', utf8('hello'));
+
+    const err = await ingest.process(user.id, source.id).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(PermanentIngestError);
+    expect((await sources.get(user.id, source.id))?.status).toBe('processing');
+  });
+});
