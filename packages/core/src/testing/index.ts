@@ -4,6 +4,7 @@ import { createDb, users, type Db, type User } from '../db';
 import { testEnv } from './env';
 
 export { testEnv };
+export { makePdf } from './pdf';
 
 // admin bypasses RLS (fixtures, assertions); app is cairn_app, subject to RLS like the api.
 export function createTestDbs() {

@@ -15,10 +15,13 @@
   "dependencies": {
     "@aws-sdk/client-s3": "~3.1152.0",
     "@cairn/shared": "workspace:*",
+    "@langchain/core": "^1.2.18",
+    "@meirakrish/llm-kit": "^0.2.0",
     "bullmq": "~6.3.17",
     "drizzle-orm": "^0.45.4",
     "ioredis": "^6.0.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "unpdf": "^1.9.1"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.11"

@@ -1,0 +1,23 @@
+{
+  "name": "@cairn/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "build": "tsdown",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@cairn/core": "workspace:*",
+    "@langchain/core": "^1.2.18",
+    "@meirakrish/llm-kit": "^0.2.0",
+    "bullmq": "~6.3.17",
+    "ioredis": "^6.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "tsdown": "^0.23.1",
+    "tsx": "^4.23.15"
+  }
+}
