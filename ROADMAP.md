@@ -113,6 +113,37 @@ Plan decisions (agreed 2026-10-18):
 - Tests use an in-memory `ObjectStore`; CI gets no Garage. The S3 store is checked by hand against Garage.
 - Worker runs in `pnpm dev` on WSL; `OLLAMA_HOST` points at the Windows host. The in-cluster `ollama` Service waits until apps run in the cluster.
 
+## Phase 3: query
+
+| Step | What                                                                                                                          | Status    | Branch                |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------- | --------- | --------------------- |
+| 1    | llm-kit v0.3 (llm-kit repo): `LlmClient.stream()` (idle timeout, retry only before text, cancel on early stop), scripted fake | in review | llm-kit `feat/stream` |
+| 2    | Retrieval: `RetrievalService` (vector + keyword, reciprocal rank fusion), `query_log` table + RLS                             | next      |                       |
+| 3    | Eval: fixed corpus + 20–30 questions with expected passages; `pnpm eval` → recall@k / MRR per mode (local, needs Ollama)      | next      |                       |
+| 4    | Answers: `AnswerService` (prompt, context, citations), `POST /api/cairns/:id/query` streamed over SSE, rate limit, log        | todo      |                       |
+| 5    | Web: Ask panel with streamed answer and clickable `[n]` citations                                                             | todo      |                       |
+
+Step 1 status: `stream()` checked live after the driver update (NVIDIA 617.42): streamed a correct answer, early stop cancelled in 256 ms. Warm `qwen3.5:9b`: ~54 tok/s, ~50 ms prompt; cold load 41–78 s. Ready to merge and tag `v0.3.0`.
+
+Step 2 as built:
+
+- `RetrievalService.search(userId, cairnId, question, { limit 8, candidates 40, mode, queryInstruction })` in core `src/retrieval/`. Embeds outside the transaction, then vector + keyword inside `withUser`, RRF (k=60, ties by vector rank), then loads chunk + source filename/kind in fused order. Returns `vectorRank`/`keywordRank` per hit for the eval.
+- Query prefix: `Instruct: Given a question, retrieve passages from the documents that answer it\nQuery:<question>` (Qwen3-Embedding format); `queryInstruction: false` turns it off.
+- Keyword: `keywordQuery()` lowercases letters/digits, drops a small English stopword list and 1-char words, ORs up to 32 terms (`a | b`), so natural questions match; the `simple` config would otherwise require every word, including "is" and "the". Ranked by `ts_rank_cd`.
+- Vector: `set local hnsw.iterative_scan = relaxed_order` and `hnsw.ef_search = max(100, candidates)`, then re-sorted by distance. EXPLAIN as `cairn_app` shows the HNSW index is used under RLS. The keyword query was a seq scan in the test (4 ms for 20k chunks; even postgres chose a seq scan there), and `@@` isn't leakproof, so RLS may block the GIN index: revisit for large cairns.
+- `query_log` (cairn_id, user_id, question, chunk_count, latency_ms, created_at) with RLS via the cairn; written from step 4.
+- Tests use a bag-of-words embedder so ranking is predictable: right passage first, instruction prefix, keyword-only ids, fusion, stopword-only questions, cairn/RLS isolation, a 3-chunk cairn next to 300 closer chunks in another cairn.
+
+Plan decisions (agreed 2026-10-20):
+
+- Hybrid search: vector top 40 within the cairn (pgvector `hnsw.iterative_scan` so the cairn filter can't starve results) + keyword top 40, merged by reciprocal rank fusion (k=60), top 8 to the model. Runs as the user (RLS).
+- Queries get Qwen3-Embedding's instruction prefix; documents are embedded as-is. The eval checks it helps.
+- Prompt: answer only from numbered passages, cite `[n]`, say when the documents don't contain it, answer in the question's language; passages in delimiters, instructions inside them ignored.
+- One SSE stream per question: retrieved sources, answer text, then cited numbers + usage. Citations are their own event so Phase 4's sealed mode can drop them. The browser reads it with fetch (POST).
+- Single questions; follow-up conversations later. 20 questions/min per user (Redis), questions ≤ 1,000 chars.
+- Eval corpus in English only for now (user's call), from the repo's docs plus public-domain texts incl. a PDF.
+- Chat model `qwen3.5:9b`, thinking off, 16k context; check it fits next to the embedding model.
+
 ## Current layout
 
 ```
@@ -120,7 +151,7 @@ apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api →
 apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry vs fail), index.ts; dev with tsx watch, build with tsdown
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/retrieval/ (RetrievalService, keywordQuery); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -158,6 +189,8 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - pdf.js 5 dropped `isEvalSupported`; close documents with `pdf.loadingTask.destroy()` (the proxy has no `destroy`).
 - tsx `-e` scripts compile to CJS: wrap top-level `await` in an async IIFE, and run them from a package that depends on what they import (e.g. `packages/core` for drizzle).
 - No limit yet on open event streams per user; add one (Redis counter) before the app is public.
+- `qwen3.5:9b` failed with NVIDIA driver 610.88 (`CUDA error: a PTX JIT compilation failed`, then Ollama stuck until restarted). Fixed by updating to 617.42.
+- Ollama 0.40.6 keeps only one model loaded here, although both fit (chat 6.1 GB at 16k ctx + embedding 1.2 GB on 12 GB): loading one evicts the other, so every question would reload the chat model. `OLLAMA_MAX_LOADED_MODELS=2` (set 2026-10-20) is active but not enough: the models still swap (embedding load ~10 s, chat reload after it), so Ollama's own estimate must say they don't fit (likely the vision projector + 16k KV reserve). To try in step 4: flash attention / q8 KV cache, a smaller context, or a text-only chat model.
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
@@ -173,4 +206,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 3 (query), plan to be agreed before code.** Phase 2 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+Phase 3 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

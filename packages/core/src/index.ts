@@ -5,6 +5,7 @@ export * from './errors';
 export * from './events';
 export * from './ingest';
 export * from './ingest-queue';
+export * from './retrieval';
 export * from './sources';
 export * from './storage';
 export * from './users';

@@ -15,6 +15,13 @@
       "when": 1792524446843,
       "tag": "0001_sources_chunks",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792528040988,
+      "tag": "0002_query_log",
+      "breakpoints": true
     }
   ]
 }
