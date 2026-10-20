@@ -137,6 +137,31 @@ export const chunks = pgTable(
   ],
 );
 
+export const queryLog = pgTable(
+  'query_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cairnId: uuid('cairn_id')
+      .notNull()
+      .references(() => cairns.id, { onDelete: 'cascade' }),
+    // Who asked. Phase 4 adds share_id for link and API-key callers.
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    question: text('question').notNull(),
+    // Chunks handed to the model, and the time until the answer finished.
+    chunkCount: integer('chunk_count').notNull(),
+    latencyMs: integer('latency_ms').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('query_log_cairn_id_idx').on(t.cairnId, t.createdAt),
+    pgPolicy('query_log_cairn', {
+      for: 'all',
+      using: cairnVisible(t.cairnId),
+      withCheck: cairnVisible(t.cairnId),
+    }),
+  ],
+);
+
 export interface ChunkLocation {
   /** 1-based PDF page. */
   page?: number;
@@ -153,4 +178,5 @@ export type NewCairn = typeof cairns.$inferInsert;
 export type Source = typeof sources.$inferSelect;
 export type NewSource = typeof sources.$inferInsert;
 export type Chunk = typeof chunks.$inferSelect;
+export type QueryLogEntry = typeof queryLog.$inferSelect;
 export type NewChunk = typeof chunks.$inferInsert;
