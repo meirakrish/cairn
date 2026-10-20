@@ -15,7 +15,7 @@ Each user signs in with Google and can own many **cairns**. A cairn is a knowled
 | Database      | Postgres + pgvector (vectors, full-text search, all app data), accessed through Drizzle     |
 | Queue / cache | Redis: BullMQ jobs, rate limits, caching                                                     |
 | File storage  | Garage for dev, S3-compatible storage in the cloud                                            |
-| LLM layer     | [`@meirakrish/llm-kit`](https://github.com/meirakrish/llm-kit), extended in v0.2 with `embed()` and `stream()` |
+| LLM layer     | [`@meirakrish/llm-kit`](https://github.com/meirakrish/llm-kit), extended in v0.2 with an `Embedder`, and in v0.3 with `stream()` for Phase 3 |
 | Models (dev)  | Ollama on the Windows host: `qwen3.5:9b` (chat) + `qwen3-embedding:0.6b` (embeddings)        |
 | Models (cloud)| Chosen in llm-kit config. Embeddings need their own provider setting (Anthropic has no embedding API). |
 | Tooling       | pnpm monorepo, Prettier, ESLint                                                              |
@@ -93,7 +93,7 @@ query_log  (id, cairn_id, actor, share_id, question, latency_ms, created_at)
 ## Scope
 
 - **Phase 1, foundation**: monorepo, Prettier, ESLint, minikube infra (Postgres + pgvector, Redis, Garage), Google login, create and list cairns.
-- **Phase 2, ingest**: text, PDF and Markdown. llm-kit v0.2 (`embed()`, `stream()`).
-- **Phase 3, query**: hybrid retrieval, cited answers streamed over SSE, eval set.
+- **Phase 2, ingest**: text, PDF and Markdown. llm-kit v0.2 (embeddings).
+- **Phase 3, query**: hybrid retrieval, cited answers streamed over SSE (llm-kit `stream()`), eval set.
 - **Phase 4, sharing**: email and link shares, cited and sealed.
 - **Next stage**: images (needs a vision model), CSV/JSON, API keys, MCP server over `packages/core`.
