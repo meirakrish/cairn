@@ -2,8 +2,10 @@ import {
   CairnResponse,
   ListCairnsResponse,
   MeResponse,
+  SourceResponse,
   type Cairn,
   type CreateCairnRequest,
+  type Source,
   type User,
 } from '@cairn/shared';
 
@@ -50,4 +52,48 @@ export async function listCairns(fetch: Fetch): Promise<Cairn[]> {
 
 export async function createCairn(input: CreateCairnRequest): Promise<Cairn> {
   return CairnResponse.parse(await request(fetch, 'POST', '/api/cairns', input)).cairn;
+}
+
+export async function getCairn(fetch: Fetch, id: string): Promise<Cairn> {
+  return CairnResponse.parse(await request(fetch, 'GET', `/api/cairns/${id}`)).cairn;
+}
+
+export async function deleteSource(cairnId: string, sourceId: string): Promise<void> {
+  await request(fetch, 'DELETE', `/api/cairns/${cairnId}/sources/${sourceId}`);
+}
+
+/**
+ * Uploads one file. XMLHttpRequest rather than fetch, because fetch can't report upload progress.
+ * `onProgress` gets 0..1.
+ */
+export function uploadSource(
+  cairnId: string,
+  file: File,
+  onProgress: (fraction: number) => void,
+): Promise<Source> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/cairns/${cairnId}/sources`);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let body: unknown;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        body = {};
+      }
+      if (xhr.status === 202) resolve(SourceResponse.parse(body).source);
+      else
+        reject(
+          new ApiError(
+            xhr.status,
+            (body as { error?: string }).error ?? `upload failed (${xhr.status})`,
+          ),
+        );
+    };
+    xhr.onerror = () => reject(new ApiError(0, 'upload failed: network error'));
+    const form = new FormData();
+    form.append('file', file);
+    xhr.send(form);
+  });
 }

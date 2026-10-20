@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { createCairn } from '#lib/api.ts';
   import Logo from '#lib/Logo.svelte';
@@ -57,7 +58,9 @@
     <ul class="cairns">
       {#each data.cairns as cairn (cairn.id)}
         <li>
-          <strong>{cairn.name}</strong>
+          <a class="cairn-link" href={resolve('/cairns/[id]', { id: cairn.id })}>
+            <strong>{cairn.name}</strong>
+          </a>
           {#if cairn.description}<p>{cairn.description}</p>{/if}
           <small class="muted">Created {dateFormat.format(new Date(cairn.createdAt))}</small>
         </li>

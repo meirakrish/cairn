@@ -158,3 +158,188 @@ textarea {
 .cairns p {
   margin: 0.25rem 0;
 }
+
+a {
+  color: var(--accent);
+}
+
+.cairn-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cairn-link:hover strong {
+  text-decoration: underline;
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  text-decoration: none;
+}
+
+.dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  margin: 1.5rem 0;
+  padding: 2rem 1rem;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.dropzone p {
+  margin: 0;
+}
+
+.dropzone.dragging {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.uploads,
+.sources {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.uploads li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.uploads progress {
+  flex: 1;
+  min-width: 6rem;
+  accent-color: var(--accent);
+}
+
+.sources li {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.sources .row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sources .name,
+.uploads .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.sources .error {
+  margin: 0.25rem 0 0;
+}
+
+.kind {
+  flex: none;
+  min-width: 2.5rem;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.status {
+  flex: none;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.status.ready {
+  color: var(--accent);
+}
+
+.status.failed {
+  color: var(--error);
+}
+
+.status.processing {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status.processing {
+    animation: none;
+  }
+}
+
+.sources-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.live {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.live.live::before {
+  content: '● ';
+  color: var(--accent);
+}
+
+.live.lost {
+  color: var(--error);
+}
+
+button.link {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+button.link:hover {
+  color: var(--error);
+}
+
+.error-page {
+  text-align: center;
+  margin-top: 4rem;
+}
+
+.confirm {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+button.danger {
+  padding: 0.2rem 0.6rem;
+  border-color: var(--error);
+  background: var(--error);
+  color: #fff;
+  font-size: 0.85rem;
+}
