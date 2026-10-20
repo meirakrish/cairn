@@ -1,4 +1,11 @@
-import { CairnService, type Db } from '@cairn/core';
+import {
+  CairnService,
+  NotFoundError,
+  SourceService,
+  type Db,
+  type IngestQueue,
+  type ObjectStore,
+} from '@cairn/core';
 import type { HealthResponse } from '@cairn/shared';
 import express, { type ErrorRequestHandler } from 'express';
 import type { Redis } from 'ioredis';
@@ -8,14 +15,17 @@ import { loadUser, originCheck } from './auth/middleware';
 import { SessionStore } from './auth/session';
 import { cairnsRouter } from './cairns';
 import type { Config } from './config';
+import { HttpError } from './errors';
 
 export interface AppDeps {
   config: Config;
   db: Db;
   redis: Redis;
+  storage: ObjectStore;
+  ingest: IngestQueue;
 }
 
-export function createApp({ config, db, redis }: AppDeps) {
+export function createApp({ config, db, redis, storage, ingest }: AppDeps) {
   const sessions = new SessionStore(redis, config);
   const app = express();
   app.disable('x-powered-by');
@@ -28,7 +38,16 @@ export function createApp({ config, db, redis }: AppDeps) {
     res.json(body);
   });
   app.use('/api/auth', authRouter({ config, db, redis, sessions }));
-  app.use('/api/cairns', cairnsRouter(new CairnService(db, config.embedModel)));
+  app.use(
+    '/api/cairns',
+    cairnsRouter({
+      config,
+      cairns: new CairnService(db, config.embedModel),
+      sources: new SourceService(db),
+      storage,
+      ingest,
+    }),
+  );
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'not found' });
@@ -39,6 +58,14 @@ export function createApp({ config, db, redis }: AppDeps) {
 }
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof HttpError) {
+    res.status(err.status).json({ error: err.message });
+    return;
+  }
+  if (err instanceof NotFoundError) {
+    res.status(404).json({ error: err.message });
+    return;
+  }
   if (err instanceof z.ZodError) {
     res.status(400).json({ error: 'invalid request', issues: z.flattenError(err).fieldErrors });
     return;

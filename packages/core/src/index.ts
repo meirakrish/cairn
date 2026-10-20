@@ -2,5 +2,7 @@
 export * from './cairns';
 export * from './db';
 export * from './errors';
+export * from './ingest-queue';
 export * from './sources';
+export * from './storage';
 export * from './users';

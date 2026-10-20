@@ -1,9 +1,10 @@
 name: CI
 
+# Paused (2026-10-20): run by hand from the Actions tab. To re-enable, restore:
+#   push: { branches: [main] }
+#   pull_request:
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

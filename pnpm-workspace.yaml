@@ -4,3 +4,5 @@ packages:
 
 allowBuilds:
   esbuild: true
+  # Optional native speed-up for bullmq's msgpackr; prebuilt binaries cover it, no install script needed.
+  msgpackr-extract: false

@@ -38,6 +38,7 @@ Decisions made during planning:
 - Cairns (step 5): `CairnService` in core runs every query through `withUser`, so RLS (not a `where owner_id`) scopes lists. `embed_model` comes from `EMBED_MODEL` (default `qwen3-embedding:0.6b`). The api maps rows to the shared `Cairn` DTO (`createdAt` as ISO string).
 - api errors: `ZodError` → 400 with `issues`; body-parser 4xx passed through; unknown `/api/*` → 404 JSON; everything else 500.
 - Web: one page at `/`, a sign-in screen or the cairn list plus a create form; `#lib/api.ts` wraps fetch, throws `ApiError`, and parses responses with the shared schemas. Logo is `#lib/Logo.svelte` (stone colours from `--stone-*` CSS vars, top stone `--accent`); `assets/favicon.svg` is the same drawing with fixed colours, so keep them in sync. The header renders only when signed in.
+- CI is paused (2026-10-20, user's request): `ci.yml` runs only on `workflow_dispatch`; the old triggers are in a comment at the top.
 - Tests (step 6): one root `vitest.config.ts` (Vitest 5), `fileParallelism: false` because files share one DB. Real Postgres/Redis, no DB mocks; only Google (`OAuth2Client.prototype.getToken`/`verifyIdToken`) is mocked. Test DB `cairn_test` (override with `TEST_DATABASE_NAME`) and Redis db 15, derived from `DATABASE_ADMIN_URL`/`DATABASE_URL`/`REDIS_URL`. Global setup creates the app role if missing, so CI can use a bare `pgvector/pgvector` service with only `postgres`.
 - Login rotates the session via `SessionStore.revoke` (old Redis key) + `create`; it no longer clears and sets `cairn_sid` in the same response.
 - CI (step 7): `.github/workflows/ci.yml`, on push to main and PRs. Job `check` runs format, lint, typecheck, build and test against `pgvector/pgvector` + `redis` service containers (same images as deploy/base, no Redis password); job `deploy` runs `kubectl kustomize` on the minikube overlay after copying `secrets.env.example`. Node from `.nvmrc`, pnpm from `packageManager`.
@@ -49,8 +50,8 @@ Decisions made during planning:
 | ---- | ------------------------------------------------------------------------------------------------------------------------ | ------ | ----------------------- |
 | 1    | llm-kit v0.2 (in the llm-kit repo): `Embedder` (Ollama + OpenAI), `EMBED_*` config, `fakeEmbedder`; published as `0.2.0` | done   | llm-kit `feat/embedder` |
 | 2    | Schema: `sources`, `chunks` (`vector(1024)` + HNSW, generated `tsv` + GIN), RLS via the parent cairn; core services      | done   | `phase2/step2-schema`   |
-| 3    | Upload api: `ObjectStore` over Garage, `GET /api/cairns/:id`, sources list/upload/delete, MIME sniffing, BullMQ enqueue  | next   |                         |
-| 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                      | todo   |                         |
+| 3    | Upload api: `ObjectStore` over Garage, `GET /api/cairns/:id`, sources list/upload/delete, MIME sniffing, BullMQ enqueue  | done   | `phase2/step3-upload`   |
+| 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                      | next   |                         |
 | 5    | Live status: worker publishes on Redis pub/sub, api streams `GET /api/cairns/:id/events` (SSE)                           | todo   |                         |
 | 6    | Web: `/cairns/[id]` with drag-and-drop upload, live source list, delete                                                  | todo   |                         |
 
@@ -62,6 +63,15 @@ Step 2 as built:
 - `chunks`: composite FK `(source_id, cairn_id) → sources(id, cairn_id)` so a chunk can't sit in another cairn; `unique(source_id, ordinal)`; `embedding vector(1024)` (`EMBEDDING_DIMENSIONS` in core) with HNSW `vector_cosine_ops`; `tsv` generated from `to_tsvector('simple', content)` with GIN.
 - RLS policies `sources_cairn` / `chunks_cairn`: `exists (select 1 from cairns where id = cairn_id)`, which inherits cairns' RLS. Phase 4 must narrow writes to editors and hide sources from sealed callers.
 - `SourceService` (core): `create` (id chosen up front, key `cairns/<cairnId>/sources/<id>`, `NotFoundError` if the cairn isn't visible), `list`, `get`, `delete` (returns the row for file cleanup), and for the worker `markProcessing` (from pending/processing/failed only, so duplicate jobs no-op), `complete` (replace chunks + ready, one transaction, 200-row inserts), `fail` (error capped at 500 chars), `listChunks`. `CairnService.get` added.
+
+Step 3 as built:
+
+- `ObjectStore` in core (`S3ObjectStore` with `forcePathStyle` for Garage, `MemoryObjectStore` for tests); `get` throws `NotFoundError`, `delete` tolerates missing objects.
+- `IngestQueue` in core: BullMQ queue `ingest`, job `{ sourceId, userId }`, job id = source id (re-enqueue is a no-op), 3 attempts with exponential backoff from 5 s. Shares the api's ioredis connection (BullMQ 6 takes ioredis as a peer dependency).
+- Upload: busboy with `defParamCharset: 'utf8'` (default latin1 garbles Hebrew names), one file in field `file`, buffered in memory up to `UPLOAD_MAX_MEGA_BYTES` (25; decimal MB, converted to `config.uploadMaxBytes`), early 413 on Content-Length. Kind from bytes: `%PDF-` in the first 1 KB, else strict UTF-8 without NUL (Markdown by extension), else 415. File names: basename, control chars stripped, 200 chars max.
+- Order: check cairn → read upload → insert source → put object (on failure delete the row) → enqueue (on failure mark the source failed). Delete: remove the queued job, delete the row, then the object (a failed object delete is logged, not returned).
+- Route ids go through `idParam()`: malformed uuid → 404, like an unknown id. `HttpError` (status + client-safe message) and `NotFoundError` map to responses in the error handler.
+- Checked live against Garage: upload of a Hebrew-named `.md` stored, job queued, delete removed object and job.
 
 Plan decisions (agreed 2026-10-18):
 
@@ -80,9 +90,9 @@ Plan decisions (agreed 2026-10-18):
 
 ```
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; src/lib/api.ts, src/lib/app.css
-apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (router); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
+apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -112,6 +122,9 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - When bumping the Postgres or Redis image in deploy/base, bump the CI service images too.
 - Composite-key and unique violations fire in index order: a test meant to hit `chunks_source_fk` hit `chunks_source_ordinal_key` first. Pick values that only break the constraint under test.
 - Ollama is reached from WSL at the Windows host IP (`OLLAMA_HOST=http://172.19.208.1:11434` today; it can change after a reboot). The Windows firewall rules `ollama.exe` are limited to `172.16.0.0/12` with edge traversal blocked (UDP rule disabled), because the PC has public IPv6 addresses.
+- pnpm's `minimumReleaseAge` rejects packages published in the last day. When `pnpm add` offers to add a `minimumReleaseAgeExclude`, don't: pin a slightly older version instead (e.g. `bullmq@~6.3.15`). If a too-new version already landed in the lockfile, restore `pnpm-lock.yaml` and the package.json files first.
+- `msgpackr-extract` (bullmq's optional native helper) is `false` in `allowBuilds`: prebuilt binaries are enough.
+- Express 5 types `req.params` values as `string | string[]`; use `idParam()` in `apps/api/src/cairns.ts`.
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
