@@ -1,11 +1,14 @@
 import {
   createDb,
+  EMBEDDING_DIMENSIONS,
   IngestQueue,
   MemoryObjectStore,
   redisSourcePublisher,
   SourceService,
 } from '@cairn/core';
 import { createUser, resetDb, testEnv } from '@cairn/core/testing';
+import type { LlmClient } from '@meirakrish/llm-kit';
+import { fakeEmbedder, scriptedLlm, type ScriptedLlmScript } from '@meirakrish/llm-kit/testing';
 import { Redis } from 'ioredis';
 import type { Response } from 'supertest';
 import { createApp } from './app';
@@ -32,6 +35,7 @@ export function createTestApp() {
     S3_SECRET_ACCESS_KEY: 'test',
     UPLOAD_MAX_MEGA_BYTES: '1',
     SSE_HEARTBEAT_MS: '50',
+    QUERY_RATE_LIMIT: '3',
   });
   const admin = createDb(env.adminUrl);
   const db = createDb(config.databaseUrl);
@@ -41,13 +45,30 @@ export function createTestApp() {
   const ingest = new IngestQueue(redis);
   const subscriber = new Redis(config.redisUrl);
   const hub = new EventHub(subscriber);
+  const embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS });
+  // Tests replace the script with t.script(...); the app keeps talking to this wrapper.
+  let llm = scriptedLlm();
+  const llmProxy: LlmClient = {
+    provider: 'custom',
+    model: 'scripted',
+    chatWithTools: (...args) => llm.chatWithTools(...args),
+    structured: (...args) => llm.structured(...args),
+    stream: (...args) => llm.stream(...args),
+    takeUsage: () => llm.takeUsage(),
+  };
 
   return {
-    app: createApp({ config, db: db.db, redis, storage, ingest, hub }),
+    app: createApp({ config, db: db.db, redis, storage, ingest, hub, embedder, llm: llmProxy }),
     config,
     storage,
     ingest,
     hub,
+    embedder,
+    /** Sets what the model answers next; returns the scripted client to inspect its calls. */
+    script(next: ScriptedLlmScript) {
+      llm = scriptedLlm(next);
+      return llm;
+    },
     // Acts like the worker: changes made through it are published to the event streams.
     sources: new SourceService(db.db, { onChange: redisSourcePublisher(redis) }),
     admin: admin.db,

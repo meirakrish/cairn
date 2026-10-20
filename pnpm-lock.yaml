@@ -208,6 +208,12 @@ importers:
       '@cairn/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@langchain/core':
+        specifier: ^1.2.18
+        version: 1.2.18
+      '@meirakrish/llm-kit':
+        specifier: ^0.3.0
+        version: 0.3.0(@langchain/core@1.2.18)(zod@4.6.7)
       busboy:
         specifier: ^1.6.0
         version: 1.6.0
