@@ -44,7 +44,7 @@ Decisions made during planning:
 - CI (step 7): `.github/workflows/ci.yml`, on push to main and PRs. Job `check` runs format, lint, typecheck, build and test against `pgvector/pgvector` + `redis` service containers (same images as deploy/base, no Redis password); job `deploy` runs `kubectl kustomize` on the minikube overlay after copying `secrets.env.example`. Node from `.nvmrc`, pnpm from `packageManager`.
 - DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
-## Phase 2: ingest
+## Phase 2: ingest (done)
 
 | Step | What                                                                                                                     | Status | Branch                  |
 | ---- | ------------------------------------------------------------------------------------------------------------------------ | ------ | ----------------------- |
@@ -53,7 +53,7 @@ Decisions made during planning:
 | 3    | Upload api: `ObjectStore` over Garage, `GET /api/cairns/:id`, sources list/upload/delete, MIME sniffing, BullMQ enqueue  | done   | `phase2/step3-upload`   |
 | 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                      | done   | `phase2/step4-worker`   |
 | 5    | Live status: worker publishes on Redis pub/sub, api streams `GET /api/cairns/:id/events` (SSE)                           | done   | `phase2/step5-sse`      |
-| 6    | Web: `/cairns/[id]` with drag-and-drop upload, live source list, delete                                                  | next   |                         |
+| 6    | Web: `/cairns/[id]` with drag-and-drop upload, live source list, delete                                                  | done   | `phase2/step6-web`      |
 
 Each step brings its own tests.
 
@@ -92,6 +92,14 @@ Step 5 as built:
 - Route: `X-Accel-Buffering: no` for nginx, heartbeat `: ping` every `SSE_HEARTBEAT_MS` (25 s) that also re-checks session + cairn and ends the stream otherwise; all state lives in one object so a disconnect mid-setup is handled. The error handler just ends responses whose headers are already sent.
 - Checked live: an upload of DESIGN.md streamed pending → processing → ready within ~300 ms.
 
+Step 6 as built:
+
+- `/cairns/[id]`: load gets the cairn (404 → `+error.svelte`, signed out → `/`); sources come only from the event stream (snapshot on every connect), so the page never fetches the list separately.
+- `EventSource` on `/api/cairns/:id/events`; the browser retries dropped connections itself, and when it gives up (`CLOSED`, e.g. 401) the page reconnects with backoff 2 s → 30 s and shows Live / Connecting / Disconnected.
+- Upload: drag-and-drop or file picker (multiple), one file at a time via `XMLHttpRequest` for a progress bar (fetch has no upload progress); errors (413, 415, ...) stay listed until dismissed. Delete confirms inline in the row ("Delete this file? Delete / Cancel"); errors show in the row. No `alert`/`confirm`/`prompt` anywhere in the web app (user preference).
+- Home list links each cairn. Plain CSS in `app.css` (dropzone, source rows, status colours, reduced-motion aware pulse for processing).
+- Checked through the Vite dev proxy: SSE is not buffered (pending arrived 44 ms after the upload started, ready ~0.7 s later); `/cairns/<id>` serves the SPA.
+
 Plan decisions (agreed 2026-10-18):
 
 - `stream()` moves from llm-kit v0.2 to Phase 3, where answers are streamed.
@@ -108,7 +116,7 @@ Plan decisions (agreed 2026-10-18):
 ## Current layout
 
 ```
-apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; src/lib/api.ts, src/lib/app.css
+apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; routes `/` and `/cairns/[id]`, `+error.svelte`; src/lib/api.ts (incl. XHR upload), src/lib/app.css
 apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry vs fail), index.ts; dev with tsx watch, build with tsdown
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
@@ -165,4 +173,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-Phase 2 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 3 (query), plan to be agreed before code.** Phase 2 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
