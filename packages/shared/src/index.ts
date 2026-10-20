@@ -39,3 +39,29 @@ export type CairnResponse = z.infer<typeof CairnResponse>;
 
 export const ListCairnsResponse = z.object({ cairns: z.array(Cairn) });
 export type ListCairnsResponse = z.infer<typeof ListCairnsResponse>;
+
+export const SourceKind = z.enum(['text', 'markdown', 'pdf']);
+export type SourceKind = z.infer<typeof SourceKind>;
+
+export const SourceStatus = z.enum(['pending', 'processing', 'ready', 'failed']);
+export type SourceStatus = z.infer<typeof SourceStatus>;
+
+export const Source = z.object({
+  id: z.uuid(),
+  cairnId: z.uuid(),
+  kind: SourceKind,
+  filename: z.string(),
+  mime: z.string(),
+  size: z.number().int(),
+  status: SourceStatus,
+  error: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type Source = z.infer<typeof Source>;
+
+export const SourceResponse = z.object({ source: Source });
+export type SourceResponse = z.infer<typeof SourceResponse>;
+
+export const ListSourcesResponse = z.object({ sources: z.array(Source) });
+export type ListSourcesResponse = z.infer<typeof ListSourcesResponse>;

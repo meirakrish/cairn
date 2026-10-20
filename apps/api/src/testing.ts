@@ -1,4 +1,4 @@
-import { createDb } from '@cairn/core';
+import { createDb, IngestQueue, MemoryObjectStore } from '@cairn/core';
 import { createUser, resetDb, testEnv } from '@cairn/core/testing';
 import { Redis } from 'ioredis';
 import type { Response } from 'supertest';
@@ -17,20 +17,32 @@ export function createTestApp() {
     APP_ORIGIN,
     GOOGLE_CLIENT_ID: 'test-client-id',
     GOOGLE_CLIENT_SECRET: 'test-client-secret',
+    // Tests use MemoryObjectStore; these only satisfy the config schema.
+    S3_ENDPOINT: 'http://s3.invalid',
+    S3_REGION: 'test',
+    S3_BUCKET: 'test',
+    S3_ACCESS_KEY_ID: 'test',
+    S3_SECRET_ACCESS_KEY: 'test',
+    UPLOAD_MAX_MEGA_BYTES: '1',
   });
   const admin = createDb(env.adminUrl);
   const db = createDb(config.databaseUrl);
   const redis = new Redis(config.redisUrl);
   const sessions = new SessionStore(redis, config);
+  const storage = new MemoryObjectStore();
+  const ingest = new IngestQueue(redis);
 
   return {
-    app: createApp({ config, db: db.db, redis }),
+    app: createApp({ config, db: db.db, redis, storage, ingest }),
     config,
+    storage,
+    ingest,
     admin: admin.db,
     redis,
     async reset() {
       await resetDb(admin.db);
       await redis.flushdb();
+      storage.objects.clear();
     },
     createUser: (overrides?: Parameters<typeof createUser>[1]) => createUser(admin.db, overrides),
     // A Cookie header value for a signed-in user.
@@ -38,6 +50,7 @@ export function createTestApp() {
       return `cairn_sid=${await sessions.start({ userId })}`;
     },
     async close() {
+      await ingest.close();
       await Promise.all([admin.close(), db.close(), redis.quit()]);
     },
   };

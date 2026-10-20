@@ -100,15 +100,21 @@ Google sign-in is handled entirely by the api (authorization code flow with PKCE
 
 All routes are under `/api` and return JSON. Errors are `{ "error": "..." }`; validation errors (400) also carry `issues`.
 
-| Route                   | Auth | What it does                                   |
-| ----------------------- | ---- | ---------------------------------------------- |
-| `GET /api/health`       | no   | Liveness                                       |
-| `GET /api/auth/me`      | yes  | Current user                                   |
-| `POST /api/auth/logout` | yes  | End the session                                |
-| `GET /api/cairns`       | yes  | Your cairns, newest first                      |
-| `POST /api/cairns`      | yes  | Create a cairn: `{ name, description? }` → 201 |
+| Route                                      | Auth | What it does                                                               |
+| ------------------------------------------ | ---- | -------------------------------------------------------------------------- |
+| `GET /api/health`                          | no   | Liveness                                                                   |
+| `GET /api/auth/me`                         | yes  | Current user                                                               |
+| `POST /api/auth/logout`                    | yes  | End the session                                                            |
+| `GET /api/cairns`                          | yes  | Your cairns, newest first                                                  |
+| `POST /api/cairns`                         | yes  | Create a cairn: `{ name, description? }` → 201                             |
+| `GET /api/cairns/:id`                      | yes  | One cairn                                                                  |
+| `GET /api/cairns/:id/sources`              | yes  | The cairn's sources (files), newest first, with status                     |
+| `POST /api/cairns/:id/sources`             | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async |
+| `DELETE /api/cairns/:id/sources/:sourceId` | yes  | Delete a source, its chunks and its stored file → 204                      |
 
-Request and response shapes are the zod schemas in `packages/shared`.
+Request and response shapes are the zod schemas in `packages/shared`. Unknown, malformed or other users' ids are all 404.
+
+Uploads accept text, Markdown and PDF. The type comes from the file's bytes (a PDF signature, otherwise valid UTF-8 text; `.md`/`.markdown` makes it Markdown), not from the browser's Content-Type. Anything else is 415, too large is 413.
 
 ## Tests
 
@@ -119,4 +125,4 @@ Request and response shapes are the zod schemas in `packages/shared`.
 
 Helpers live in `@cairn/core/testing` and `apps/api/src/testing.ts`.
 
-CI (`.github/workflows/ci.yml`) runs the same checks on every PR and push to `main`, with Postgres (pgvector) and Redis as service containers, plus a `kubectl kustomize` build of the minikube overlay.
+CI (`.github/workflows/ci.yml`) runs the same checks, currently by hand only (Actions tab → CI → Run workflow), with Postgres (pgvector) and Redis as service containers, plus a `kubectl kustomize` build of the minikube overlay.

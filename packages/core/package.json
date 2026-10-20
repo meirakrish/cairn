@@ -13,8 +13,11 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "~3.1152.0",
     "@cairn/shared": "workspace:*",
+    "bullmq": "~6.3.17",
     "drizzle-orm": "^0.45.4",
+    "ioredis": "^6.0.0",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
