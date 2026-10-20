@@ -34,6 +34,17 @@ describe('CairnService', () => {
   });
 });
 
+describe('CairnService.get', () => {
+  it("returns the caller's cairn and hides others'", async () => {
+    const a = await createUser(admin.db);
+    const b = await createUser(admin.db);
+    const cairn = await service.create(a.id, { name: 'A' });
+
+    expect((await service.get(a.id, cairn.id))?.name).toBe('A');
+    expect(await service.get(b.id, cairn.id)).toBeUndefined();
+  });
+});
+
 describe('RLS on cairns', () => {
   it("hides other users' cairns", async () => {
     const a = await createUser(admin.db);

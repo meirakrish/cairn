@@ -1,4 +1,4 @@
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { cairns, withUser, type Cairn, type Db } from './db';
 
 export interface CreateCairnInput {
@@ -25,6 +25,13 @@ export class CairnService {
         })
         .returning();
       return cairn!;
+    });
+  }
+
+  async get(userId: string, cairnId: string): Promise<Cairn | undefined> {
+    return withUser(this.db, userId, async (tx) => {
+      const [cairn] = await tx.select().from(cairns).where(eq(cairns.id, cairnId));
+      return cairn;
     });
   }
 

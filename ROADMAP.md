@@ -45,16 +45,25 @@ Decisions made during planning:
 
 ## Phase 2: ingest
 
-| Step | What                                                                                                                        | Status    | Branch                  |
-| ---- | --------------------------------------------------------------------------------------------------------------------------- | --------- | ----------------------- |
-| 1    | llm-kit v0.2 (in the llm-kit repo): `Embedder` (Ollama + OpenAI), `EMBED_*` config, `fakeEmbedder`; tag `v0.2.0` to publish | in review | llm-kit `feat/embedder` |
-| 2    | Schema: `sources`, `chunks` (`vector(1024)` + HNSW, generated `tsv` + GIN), RLS via the parent cairn; core services         | next      |                         |
-| 3    | Upload api: `ObjectStore` over Garage, `GET /api/cairns/:id`, sources list/upload/delete, MIME sniffing, BullMQ enqueue     | todo      |                         |
-| 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                         | todo      |                         |
-| 5    | Live status: worker publishes on Redis pub/sub, api streams `GET /api/cairns/:id/events` (SSE)                              | todo      |                         |
-| 6    | Web: `/cairns/[id]` with drag-and-drop upload, live source list, delete                                                     | todo      |                         |
+| Step | What                                                                                                                     | Status | Branch                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ | ------ | ----------------------- |
+| 1    | llm-kit v0.2 (in the llm-kit repo): `Embedder` (Ollama + OpenAI), `EMBED_*` config, `fakeEmbedder`; published as `0.2.0` | done   | llm-kit `feat/embedder` |
+| 2    | Schema: `sources`, `chunks` (`vector(1024)` + HNSW, generated `tsv` + GIN), RLS via the parent cairn; core services      | done   | `phase2/step2-schema`   |
+| 3    | Upload api: `ObjectStore` over Garage, `GET /api/cairns/:id`, sources list/upload/delete, MIME sniffing, BullMQ enqueue  | next   |                         |
+| 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                      | todo   |                         |
+| 5    | Live status: worker publishes on Redis pub/sub, api streams `GET /api/cairns/:id/events` (SSE)                           | todo   |                         |
+| 6    | Web: `/cairns/[id]` with drag-and-drop upload, live source list, delete                                                  | todo   |                         |
 
-Each step brings its own tests. Plan decisions (agreed 2026-10-18):
+Each step brings its own tests.
+
+Step 2 as built:
+
+- `sources` (kind and status are text + CHECK, not pg enums, so adding a value is a one-line migration), `updated_at` for status changes, `created_by` set null if the user goes.
+- `chunks`: composite FK `(source_id, cairn_id) → sources(id, cairn_id)` so a chunk can't sit in another cairn; `unique(source_id, ordinal)`; `embedding vector(1024)` (`EMBEDDING_DIMENSIONS` in core) with HNSW `vector_cosine_ops`; `tsv` generated from `to_tsvector('simple', content)` with GIN.
+- RLS policies `sources_cairn` / `chunks_cairn`: `exists (select 1 from cairns where id = cairn_id)`, which inherits cairns' RLS. Phase 4 must narrow writes to editors and hide sources from sealed callers.
+- `SourceService` (core): `create` (id chosen up front, key `cairns/<cairnId>/sources/<id>`, `NotFoundError` if the cairn isn't visible), `list`, `get`, `delete` (returns the row for file cleanup), and for the worker `markProcessing` (from pending/processing/failed only, so duplicate jobs no-op), `complete` (replace chunks + ready, one transaction, 200-row inserts), `fail` (error capped at 500 chars), `listChunks`. `CairnService.get` added.
+
+Plan decisions (agreed 2026-10-18):
 
 - `stream()` moves from llm-kit v0.2 to Phase 3, where answers are streamed.
 - Embeddings: `qwen3-embedding:0.6b` at 1024 dims (`EMBED_DIMENSIONS=1024`), so the HNSW index survives a provider change (text-embedding-3 can also return 1024).
@@ -73,7 +82,7 @@ Each step brings its own tests. Plan decisions (agreed 2026-10-18):
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; src/lib/api.ts, src/lib/app.css
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (router); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns + RLS policy), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -101,6 +110,8 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Test files in apps/api can't import `drizzle-orm` directly (it's a core dependency, not an api one); go through `@cairn/core`.
 - Verified the RLS tests bite: disabling RLS on `cairn_test.cairns` fails 6 tests.
 - When bumping the Postgres or Redis image in deploy/base, bump the CI service images too.
+- Composite-key and unique violations fire in index order: a test meant to hit `chunks_source_fk` hit `chunks_source_ordinal_key` first. Pick values that only break the constraint under test.
+- Ollama is reached from WSL at the Windows host IP (`OLLAMA_HOST=http://172.19.208.1:11434` today; it can change after a reboot). The Windows firewall rules `ollama.exe` are limited to `172.16.0.0/12` with edge traversal blocked (UDP rule disabled), because the PC has public IPv6 addresses.
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
