@@ -65,3 +65,14 @@ export type SourceResponse = z.infer<typeof SourceResponse>;
 
 export const ListSourcesResponse = z.object({ sources: z.array(Source) });
 export type ListSourcesResponse = z.infer<typeof ListSourcesResponse>;
+
+/**
+ * Messages on GET /api/cairns/:id/events (SSE `data:` lines). A snapshot comes first, then one
+ * message per change.
+ */
+export const SourceEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('snapshot'), sources: z.array(Source) }),
+  z.object({ type: z.literal('source'), source: Source }),
+  z.object({ type: z.literal('source_deleted'), sourceId: z.uuid() }),
+]);
+export type SourceEvent = z.infer<typeof SourceEvent>;

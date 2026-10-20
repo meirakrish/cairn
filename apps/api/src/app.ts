@@ -1,6 +1,7 @@
 import {
   CairnService,
   NotFoundError,
+  redisSourcePublisher,
   SourceService,
   type Db,
   type IngestQueue,
@@ -14,6 +15,8 @@ import { authRouter } from './auth';
 import { loadUser, originCheck } from './auth/middleware';
 import { SessionStore } from './auth/session';
 import { cairnsRouter } from './cairns';
+import type { EventHub } from './event-hub';
+import { eventsRouter } from './events';
 import type { Config } from './config';
 import { HttpError } from './errors';
 
@@ -23,9 +26,11 @@ export interface AppDeps {
   redis: Redis;
   storage: ObjectStore;
   ingest: IngestQueue;
+  /** Fans out live updates to event streams; needs its own Redis connection in subscriber mode. */
+  hub: EventHub;
 }
 
-export function createApp({ config, db, redis, storage, ingest }: AppDeps) {
+export function createApp({ config, db, redis, storage, ingest, hub }: AppDeps) {
   const sessions = new SessionStore(redis, config);
   const app = express();
   app.disable('x-powered-by');
@@ -38,16 +43,10 @@ export function createApp({ config, db, redis, storage, ingest }: AppDeps) {
     res.json(body);
   });
   app.use('/api/auth', authRouter({ config, db, redis, sessions }));
-  app.use(
-    '/api/cairns',
-    cairnsRouter({
-      config,
-      cairns: new CairnService(db, config.embedModel),
-      sources: new SourceService(db),
-      storage,
-      ingest,
-    }),
-  );
+  const cairns = new CairnService(db, config.embedModel);
+  const sources = new SourceService(db, { onChange: redisSourcePublisher(redis) });
+  app.use('/api/cairns', eventsRouter({ config, cairns, sources, sessions, hub }));
+  app.use('/api/cairns', cairnsRouter({ config, cairns, sources, storage, ingest }));
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'not found' });
@@ -58,6 +57,12 @@ export function createApp({ config, db, redis, storage, ingest }: AppDeps) {
 }
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  // A stream (SSE) that fails after it started can't change its status; just end it.
+  if (res.headersSent) {
+    console.error(err);
+    res.end();
+    return;
+  }
   if (err instanceof HttpError) {
     res.status(err.status).json({ error: err.message });
     return;

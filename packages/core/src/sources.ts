@@ -11,6 +11,7 @@ import {
   type SourceKind,
 } from './db';
 import { NotFoundError } from './errors';
+import type { SourceChange, SourceChangeListener } from './events';
 
 export interface CreateSourceInput {
   kind: SourceKind;
@@ -34,12 +35,36 @@ export function storageKey(cairnId: string, sourceId: string): string {
 
 // Like CairnService, every query runs as a user, so RLS decides what is visible.
 // The worker calls the processing methods as the user who uploaded the source.
+export interface SourceServiceOptions {
+  /**
+   * Told about every committed change (create, status changes, delete), e.g. to publish live updates.
+   * Its errors are logged, never thrown: the change itself already happened.
+   */
+  onChange?: SourceChangeListener;
+}
+
 export class SourceService {
-  constructor(private db: Db) {}
+  constructor(
+    private db: Db,
+    private opts: SourceServiceOptions = {},
+  ) {}
+
+  private async notify(change: SourceChange): Promise<void> {
+    try {
+      await this.opts.onChange?.(change);
+    } catch (err) {
+      console.warn(`source ${change.source.id}: change listener failed:`, err);
+    }
+  }
+
+  private async changed(source: Source | undefined): Promise<Source | undefined> {
+    if (source) await this.notify({ kind: 'changed', source });
+    return source;
+  }
 
   /** Records a new pending source. The id is chosen here so the storage key is known before upload. */
   async create(userId: string, cairnId: string, input: CreateSourceInput): Promise<Source> {
-    return withUser(this.db, userId, async (tx) => {
+    const source = await withUser(this.db, userId, async (tx) => {
       const [cairn] = await tx.select({ id: cairns.id }).from(cairns).where(eq(cairns.id, cairnId));
       if (!cairn) throw new NotFoundError('cairn');
       const id = randomUUID();
@@ -49,6 +74,8 @@ export class SourceService {
         .returning();
       return source!;
     });
+    await this.notify({ kind: 'changed', source });
+    return source;
   }
 
   async list(userId: string, cairnId: string): Promise<Source[]> {
@@ -70,10 +97,12 @@ export class SourceService {
 
   /** Deletes the source and its chunks; returns the row so the caller can delete the stored file. */
   async delete(userId: string, sourceId: string): Promise<Source | undefined> {
-    return withUser(this.db, userId, async (tx) => {
+    const source = await withUser(this.db, userId, async (tx) => {
       const [source] = await tx.delete(sources).where(eq(sources.id, sourceId)).returning();
       return source;
     });
+    if (source) await this.notify({ kind: 'deleted', source });
+    return source;
   }
 
   /**
@@ -81,7 +110,7 @@ export class SourceService {
    * so a duplicate or late job does nothing.
    */
   async markProcessing(userId: string, sourceId: string): Promise<Source | undefined> {
-    return withUser(this.db, userId, async (tx) => {
+    const source = await withUser(this.db, userId, async (tx) => {
       const [source] = await tx
         .update(sources)
         .set({ status: 'processing', error: null, updatedAt: sql`now()` })
@@ -94,11 +123,12 @@ export class SourceService {
         .returning();
       return source;
     });
+    return this.changed(source);
   }
 
   /** Replaces the source's chunks and marks it ready, in one transaction. */
   async complete(userId: string, sourceId: string, input: ChunkInput[]): Promise<Source> {
-    return withUser(this.db, userId, async (tx) => {
+    const ready = await withUser(this.db, userId, async (tx) => {
       const [source] = await tx.select().from(sources).where(eq(sources.id, sourceId));
       if (!source) throw new NotFoundError('source');
 
@@ -120,11 +150,13 @@ export class SourceService {
         .returning();
       return ready!;
     });
+    await this.notify({ kind: 'changed', source: ready });
+    return ready;
   }
 
   /** Marks the source failed with a short, user-facing reason. */
   async fail(userId: string, sourceId: string, error: string): Promise<Source | undefined> {
-    return withUser(this.db, userId, async (tx) => {
+    const source = await withUser(this.db, userId, async (tx) => {
       const [source] = await tx
         .update(sources)
         .set({ status: 'failed', error: error.slice(0, MAX_ERROR_LENGTH), updatedAt: sql`now()` })
@@ -132,6 +164,7 @@ export class SourceService {
         .returning();
       return source;
     });
+    return this.changed(source);
   }
 
   async listChunks(userId: string, sourceId: string) {
