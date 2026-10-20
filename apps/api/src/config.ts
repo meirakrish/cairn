@@ -16,6 +16,8 @@ const Env = z.object({
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   // Decimal megabytes (1 MB = 1,000,000 bytes), matching the limit shown in error messages.
   UPLOAD_MAX_MEGA_BYTES: z.coerce.number().positive().default(25),
+  // How often open event streams send a keep-alive and re-check access.
+  SSE_HEARTBEAT_MS: z.coerce.number().int().min(10).default(25_000),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
 });
@@ -31,6 +33,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     databaseUrl: e.DATABASE_URL,
     redisUrl: e.REDIS_URL,
     embedModel: e.EMBED_MODEL,
+    sseHeartbeatMs: e.SSE_HEARTBEAT_MS,
     uploadMaxBytes: Math.floor(e.UPLOAD_MAX_MEGA_BYTES * 1_000_000),
     s3: {
       endpoint: e.S3_ENDPOINT,

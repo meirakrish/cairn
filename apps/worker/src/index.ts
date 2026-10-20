@@ -3,6 +3,7 @@ import {
   createDb,
   INGEST_QUEUE,
   IngestService,
+  redisSourcePublisher,
   S3ObjectStore,
   SourceService,
   type IngestJob,
@@ -20,7 +21,9 @@ const embedder = await createEmbedder(config.embed, {
   overflowHint: 'lower the chunk size',
   log: (msg) => console.warn(msg),
 });
-const sources = new SourceService(db);
+// Status changes go to the cairn's Redis channel, which the api streams to browsers.
+const publisher = new Redis(config.redisUrl);
+const sources = new SourceService(db, { onChange: redisSourcePublisher(publisher) });
 // The cairns' embed_model must match; the api stamps it from EMBED_MODEL too.
 const ingest = new IngestService({
   cairns: new CairnService(db, embedder.model),
@@ -52,7 +55,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, () => {
     void worker
       .close()
-      .then(() => Promise.all([closeDb(), connection.quit()]))
+      .then(() => Promise.all([closeDb(), connection.quit(), publisher.quit()]))
       .then(() => storage.close())
       .then(() => process.exit(0));
   });

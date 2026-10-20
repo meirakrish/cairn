@@ -218,3 +218,47 @@ describe('RLS on sources and chunks', () => {
     expect(await pgError(insert)).toMatch(/chunks_source_fk/);
   });
 });
+
+describe('SourceService change notifications', () => {
+  it('reports each committed change, and nothing for no-ops', async () => {
+    const changes: string[] = [];
+    const notifying = new SourceService(app.db, {
+      onChange: (c) => void changes.push(`${c.kind}:${c.source.status}`),
+    });
+    const { user, cairn } = await ownerWithCairn();
+    const other = await createUser(admin.db);
+
+    const source = await notifying.create(user.id, cairn.id, file);
+    await notifying.markProcessing(user.id, source.id);
+    await notifying.fail(user.id, source.id, 'x');
+    await notifying.complete(user.id, source.id, [chunk('a')]);
+    await notifying.markProcessing(user.id, source.id); // ready: no-op
+    await notifying.delete(other.id, source.id); // not visible: no-op
+    await notifying.delete(user.id, source.id);
+
+    expect(changes).toEqual([
+      'changed:pending',
+      'changed:processing',
+      'changed:failed',
+      'changed:ready',
+      'deleted:ready',
+    ]);
+  });
+
+  it('does not fail the change when the listener throws', async () => {
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const notifying = new SourceService(app.db, {
+        onChange: () => {
+          throw new Error('redis down');
+        },
+      });
+      const { user, cairn } = await ownerWithCairn();
+      const source = await notifying.create(user.id, cairn.id, file);
+      expect((await service.get(user.id, source.id))?.status).toBe('pending');
+    } finally {
+      console.warn = warn;
+    }
+  });
+});

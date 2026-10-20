@@ -1,8 +1,15 @@
-import { createDb, IngestQueue, MemoryObjectStore } from '@cairn/core';
+import {
+  createDb,
+  IngestQueue,
+  MemoryObjectStore,
+  redisSourcePublisher,
+  SourceService,
+} from '@cairn/core';
 import { createUser, resetDb, testEnv } from '@cairn/core/testing';
 import { Redis } from 'ioredis';
 import type { Response } from 'supertest';
 import { createApp } from './app';
+import { EventHub } from './event-hub';
 import { SessionStore } from './auth/session';
 import { loadConfig } from './config';
 
@@ -24,6 +31,7 @@ export function createTestApp() {
     S3_ACCESS_KEY_ID: 'test',
     S3_SECRET_ACCESS_KEY: 'test',
     UPLOAD_MAX_MEGA_BYTES: '1',
+    SSE_HEARTBEAT_MS: '50',
   });
   const admin = createDb(env.adminUrl);
   const db = createDb(config.databaseUrl);
@@ -31,12 +39,17 @@ export function createTestApp() {
   const sessions = new SessionStore(redis, config);
   const storage = new MemoryObjectStore();
   const ingest = new IngestQueue(redis);
+  const subscriber = new Redis(config.redisUrl);
+  const hub = new EventHub(subscriber);
 
   return {
-    app: createApp({ config, db: db.db, redis, storage, ingest }),
+    app: createApp({ config, db: db.db, redis, storage, ingest, hub }),
     config,
     storage,
     ingest,
+    hub,
+    // Acts like the worker: changes made through it are published to the event streams.
+    sources: new SourceService(db.db, { onChange: redisSourcePublisher(redis) }),
     admin: admin.db,
     redis,
     async reset() {
@@ -51,7 +64,7 @@ export function createTestApp() {
     },
     async close() {
       await ingest.close();
-      await Promise.all([admin.close(), db.close(), redis.quit()]);
+      await Promise.all([admin.close(), db.close(), redis.quit(), subscriber.quit()]);
     },
   };
 }

@@ -109,6 +109,8 @@ Uploads are processed by `apps/worker`:
 2. The worker runs it as the uploader (RLS applies): extract text (text, Markdown by heading, PDF by page), split into ~600-token chunks (2400 characters, ~360 overlapping, cut at paragraph, sentence or word boundaries), embed, and store, setting the source `ready`.
 3. A problem with the file (no text, damaged PDF, too much text) fails the source at once with a message for the user. Other errors (Ollama down, ...) are retried 3 times with backoff before the source is marked `failed`.
 
+Status changes reach the browser live: `SourceService` reports every committed change, the api and the worker publish it on the Redis channel `cairn:<id>:events`, and `GET /api/cairns/:id/events` streams it (SSE). The stream opens with a snapshot of the cairn's sources (taken after subscribing, so nothing is lost in between) and re-checks the session and the cairn every 25 s, ending when either is gone.
+
 Limits: 2,000 PDF pages, 2M characters, 60 s to read a PDF. Scanned PDFs (no text layer) are not supported yet.
 
 ## Database roles
@@ -143,6 +145,7 @@ All routes are under `/api` and return JSON. Errors are `{ "error": "..." }`; va
 | `GET /api/cairns/:id/sources`              | yes  | The cairn's sources (files), newest first, with status                     |
 | `POST /api/cairns/:id/sources`             | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async |
 | `DELETE /api/cairns/:id/sources/:sourceId` | yes  | Delete a source, its chunks and its stored file → 204                      |
+| `GET /api/cairns/:id/events`               | yes  | Live source updates (Server-Sent Events): a snapshot, then each change     |
 
 Request and response shapes are the zod schemas in `packages/shared`. Unknown, malformed or other users' ids are all 404.
 

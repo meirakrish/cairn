@@ -1,10 +1,10 @@
 import {
   NotFoundError,
+  sourceDto,
   type Cairn as CairnRow,
   type CairnService,
   type IngestQueue,
   type ObjectStore,
-  type Source as SourceRow,
   type SourceService,
 } from '@cairn/core';
 import {
@@ -13,7 +13,6 @@ import {
   type CairnResponse,
   type ListCairnsResponse,
   type ListSourcesResponse,
-  type Source,
   type SourceResponse,
 } from '@cairn/shared';
 import { Router, type Request } from 'express';
@@ -27,17 +26,8 @@ function toDto({ id, name, description, embedModel, createdAt }: CairnRow): Cair
   return { id, name, description, embedModel, createdAt: createdAt.toISOString() };
 }
 
-function sourceDto(s: SourceRow): Source {
-  const { id, cairnId, kind, filename, mime, size, status, error } = s;
-  return {
-    ...{ id, cairnId, kind, filename, mime, size, status, error },
-    createdAt: s.createdAt.toISOString(),
-    updatedAt: s.updatedAt.toISOString(),
-  };
-}
-
 // A uuid route param. Malformed ids are ids that don't exist (and would otherwise be a Postgres cast error).
-function idParam(req: Request, name: string, what: string): string {
+export function idParam(req: Request, name: string, what: string): string {
   const value = req.params[name];
   if (typeof value !== 'string' || !z.uuid().safeParse(value).success)
     throw new NotFoundError(what);
