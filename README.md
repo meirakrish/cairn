@@ -135,18 +135,19 @@ Google sign-in is handled entirely by the api (authorization code flow with PKCE
 
 All routes are under `/api` and return JSON. Errors are `{ "error": "..." }`; validation errors (400) also carry `issues`.
 
-| Route                                      | Auth | What it does                                                               |
-| ------------------------------------------ | ---- | -------------------------------------------------------------------------- |
-| `GET /api/health`                          | no   | Liveness                                                                   |
-| `GET /api/auth/me`                         | yes  | Current user                                                               |
-| `POST /api/auth/logout`                    | yes  | End the session                                                            |
-| `GET /api/cairns`                          | yes  | Your cairns, newest first                                                  |
-| `POST /api/cairns`                         | yes  | Create a cairn: `{ name, description? }` → 201                             |
-| `GET /api/cairns/:id`                      | yes  | One cairn                                                                  |
-| `GET /api/cairns/:id/sources`              | yes  | The cairn's sources (files), newest first, with status                     |
-| `POST /api/cairns/:id/sources`             | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async |
-| `DELETE /api/cairns/:id/sources/:sourceId` | yes  | Delete a source, its chunks and its stored file → 204                      |
-| `GET /api/cairns/:id/events`               | yes  | Live source updates (Server-Sent Events): a snapshot, then each change     |
+| Route                                      | Auth | What it does                                                                                                         |
+| ------------------------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                          | no   | Liveness                                                                                                             |
+| `GET /api/auth/me`                         | yes  | Current user                                                                                                         |
+| `POST /api/auth/logout`                    | yes  | End the session                                                                                                      |
+| `GET /api/cairns`                          | yes  | Your cairns, newest first                                                                                            |
+| `POST /api/cairns`                         | yes  | Create a cairn: `{ name, description? }` → 201                                                                       |
+| `GET /api/cairns/:id`                      | yes  | One cairn                                                                                                            |
+| `GET /api/cairns/:id/sources`              | yes  | The cairn's sources (files), newest first, with status                                                               |
+| `POST /api/cairns/:id/sources`             | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async                                           |
+| `DELETE /api/cairns/:id/sources/:sourceId` | yes  | Delete a source, its chunks and its stored file → 204                                                                |
+| `GET /api/cairns/:id/events`               | yes  | Live source updates (Server-Sent Events): a snapshot, then each change                                               |
+| `POST /api/cairns/:id/query`               | yes  | Ask a question `{ question }` (≤ 1,000 chars, 20/min): the answer as SSE — passages, text pieces, then cited numbers |
 
 Request and response shapes are the zod schemas in `packages/shared`. Unknown, malformed or other users' ids are all 404.
 
@@ -165,6 +166,18 @@ Uploads accept text, Markdown and PDF. The type comes from the file's bytes (a P
 Helpers live in `@cairn/core/testing` and `apps/api/src/testing.ts`.
 
 CI (`.github/workflows/ci.yml`) runs the same checks, currently by hand only (Actions tab → CI → Run workflow), with Postgres (pgvector) and Redis as service containers, plus a `kubectl kustomize` build of the minikube overlay.
+
+## Answers
+
+`POST /api/cairns/:id/query` retrieves the 8 best passages (hybrid search, see below), sends them to the chat model (`LLM_MODEL`, default `qwen3.5:9b`, thinking off) numbered inside `<passages>`, and streams the answer. The model is told to answer only from the passages, cite them as `[n]`, say when the documents don't contain the answer, and ignore instructions inside passages. The stream (SSE `data:` lines, `AnswerEvent` in `packages/shared`) is:
+
+1. `passages`: the numbered passages (file, location, text), so the UI can show what `[n]` refers to;
+2. `delta`: pieces of the answer as the model writes them;
+3. `done`: the passage numbers the answer cited, and the latency; or `error` if the model failed midway.
+
+Validation, access and the rate limit (`QUERY_RATE_LIMIT`, default 20 per minute per user) are checked first and return plain JSON errors. Closing the connection cancels the model call. Each completed question is logged in `query_log`.
+
+The api asks Ollama at startup whether the model can think, to turn thinking off: start Ollama before the api, or restart the api after.
 
 ## Retrieval eval
 

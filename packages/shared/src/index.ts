@@ -76,3 +76,39 @@ export const SourceEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('source_deleted'), sourceId: z.uuid() }),
 ]);
 export type SourceEvent = z.infer<typeof SourceEvent>;
+
+export const QueryRequest = z.object({ question: z.string().trim().min(1).max(1000) });
+export type QueryRequest = z.infer<typeof QueryRequest>;
+
+export const ChunkLocation = z.object({
+  page: z.number().int().optional(),
+  headings: z.array(z.string()).optional(),
+  offset: z.number().int().optional(),
+});
+
+/** A passage handed to the model, numbered as the answer cites it ([1], [2], ...). */
+export const CitedPassage = z.object({
+  n: z.number().int().min(1),
+  sourceId: z.uuid(),
+  filename: z.string(),
+  kind: SourceKind,
+  location: ChunkLocation,
+  text: z.string(),
+});
+export type CitedPassage = z.infer<typeof CitedPassage>;
+
+/**
+ * Messages on POST /api/cairns/:id/query (SSE `data:` lines): the passages, the answer text in pieces,
+ * then which passages it cited. `error` replaces the rest if answering fails midway.
+ */
+export const AnswerEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('passages'), passages: z.array(CitedPassage) }),
+  z.object({ type: z.literal('delta'), text: z.string() }),
+  z.object({
+    type: z.literal('done'),
+    cited: z.array(z.number().int()),
+    latencyMs: z.number().int(),
+  }),
+  z.object({ type: z.literal('error'), message: z.string() }),
+]);
+export type AnswerEvent = z.infer<typeof AnswerEvent>;

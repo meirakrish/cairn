@@ -18,6 +18,8 @@ const Env = z.object({
   UPLOAD_MAX_MEGA_BYTES: z.coerce.number().positive().default(25),
   // How often open event streams send a keep-alive and re-check access.
   SSE_HEARTBEAT_MS: z.coerce.number().int().min(10).default(25_000),
+  // Questions per minute per user.
+  QUERY_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
 });
@@ -34,6 +36,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     redisUrl: e.REDIS_URL,
     embedModel: e.EMBED_MODEL,
     sseHeartbeatMs: e.SSE_HEARTBEAT_MS,
+    queryRateLimit: e.QUERY_RATE_LIMIT,
     uploadMaxBytes: Math.floor(e.UPLOAD_MAX_MEGA_BYTES * 1_000_000),
     s3: {
       endpoint: e.S3_ENDPOINT,

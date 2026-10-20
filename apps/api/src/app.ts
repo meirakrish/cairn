@@ -1,6 +1,8 @@
 import {
+  AnswerService,
   CairnService,
   NotFoundError,
+  RetrievalService,
   redisSourcePublisher,
   SourceService,
   type Db,
@@ -9,6 +11,7 @@ import {
 } from '@cairn/core';
 import type { HealthResponse } from '@cairn/shared';
 import express, { type ErrorRequestHandler } from 'express';
+import type { Embedder, LlmClient } from '@meirakrish/llm-kit';
 import type { Redis } from 'ioredis';
 import { z } from 'zod';
 import { authRouter } from './auth';
@@ -17,6 +20,7 @@ import { SessionStore } from './auth/session';
 import { cairnsRouter } from './cairns';
 import type { EventHub } from './event-hub';
 import { eventsRouter } from './events';
+import { queryRouter } from './query';
 import type { Config } from './config';
 import { HttpError } from './errors';
 
@@ -28,9 +32,13 @@ export interface AppDeps {
   ingest: IngestQueue;
   /** Fans out live updates to event streams; needs its own Redis connection in subscriber mode. */
   hub: EventHub;
+  /** Embeds questions for retrieval; must match the worker's model (EMBED_MODEL). */
+  embedder: Embedder;
+  /** Writes the answers. */
+  llm: LlmClient;
 }
 
-export function createApp({ config, db, redis, storage, ingest, hub }: AppDeps) {
+export function createApp({ config, db, redis, storage, ingest, hub, embedder, llm }: AppDeps) {
   const sessions = new SessionStore(redis, config);
   const app = express();
   app.disable('x-powered-by');
@@ -45,7 +53,9 @@ export function createApp({ config, db, redis, storage, ingest, hub }: AppDeps) 
   app.use('/api/auth', authRouter({ config, db, redis, sessions }));
   const cairns = new CairnService(db, config.embedModel);
   const sources = new SourceService(db, { onChange: redisSourcePublisher(redis) });
+  const answers = new AnswerService(db, new RetrievalService(db, embedder), llm);
   app.use('/api/cairns', eventsRouter({ config, cairns, sources, sessions, hub }));
+  app.use('/api/cairns', queryRouter({ config, cairns, answers, redis }));
   app.use('/api/cairns', cairnsRouter({ config, cairns, sources, storage, ingest }));
 
   app.use('/api', (_req, res) => {
