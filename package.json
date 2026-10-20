@@ -11,6 +11,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
+    "eval": "pnpm --filter @cairn/eval eval",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

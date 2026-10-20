@@ -19,6 +19,8 @@ export interface SearchOptions {
   /** Candidates taken from each search before fusing. */
   candidates?: number;
   mode?: SearchMode;
+  /** Weight of keyword ranks against vector ranks (1) in the fusion. */
+  keywordWeight?: number;
   /** Prefix the question with Qwen3-Embedding's retrieval instruction (documents are embedded without). */
   queryInstruction?: boolean;
   signal?: AbortSignal;
@@ -49,6 +51,8 @@ export function embeddingQuery(question: string): string {
 
 // The usual reciprocal rank fusion constant: damps the advantage of the very top ranks.
 const RRF_K = 60;
+// Keyword ranks count less than vector ranks: see the eval results in ROADMAP (Phase 3, step 3).
+export const DEFAULT_KEYWORD_WEIGHT = 0.3;
 
 /**
  * Hybrid search over one cairn's chunks: nearest embeddings plus full-text matches, merged by
@@ -66,7 +70,13 @@ export class RetrievalService {
     question: string,
     opts: SearchOptions = {},
   ): Promise<RetrievedChunk[]> {
-    const { limit = 8, candidates = 40, mode = 'hybrid', queryInstruction = true } = opts;
+    const {
+      limit = 8,
+      candidates = 40,
+      mode = 'hybrid',
+      keywordWeight = DEFAULT_KEYWORD_WEIGHT,
+      queryInstruction = true,
+    } = opts;
     const tsquery = mode === 'vector' ? undefined : keywordQuery(question);
     // Embed before opening the transaction: it can take a while and needs no database.
     const vector =
@@ -87,15 +97,15 @@ export class RetrievalService {
         string,
         { score: number; vectorRank: number | null; keywordRank: number | null }
       >();
-      const add = (ids: string[], key: 'vectorRank' | 'keywordRank') =>
+      const add = (ids: string[], key: 'vectorRank' | 'keywordRank', weight: number) =>
         ids.forEach((id, i) => {
           const hit = fused.get(id) ?? { score: 0, vectorRank: null, keywordRank: null };
-          hit.score += 1 / (RRF_K + i + 1);
+          hit.score += weight / (RRF_K + i + 1);
           hit[key] = i + 1;
           fused.set(id, hit);
         });
-      add(vectorIds, 'vectorRank');
-      add(keywordIds, 'keywordRank');
+      add(vectorIds, 'vectorRank', 1);
+      add(keywordIds, 'keywordRank', keywordWeight);
 
       const top = [...fused.entries()]
         .sort(

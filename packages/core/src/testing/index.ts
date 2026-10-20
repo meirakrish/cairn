@@ -5,6 +5,8 @@ import { testEnv } from './env';
 
 export { testEnv };
 export { makePdf } from './pdf';
+/** Creates and migrates the test database (the Vitest global setup); TEST_DATABASE_NAME picks another one. */
+export { default as prepareTestDatabase } from './global-setup';
 
 // admin bypasses RLS (fixtures, assertions); app is cairn_app, subject to RLS like the api.
 export function createTestDbs() {
