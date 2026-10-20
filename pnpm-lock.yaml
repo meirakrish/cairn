@@ -280,8 +280,8 @@ importers:
         specifier: ^1.2.18
         version: 1.2.18
       '@meirakrish/llm-kit':
-        specifier: ^0.2.0
-        version: 0.2.0(@langchain/core@1.2.18)(zod@4.6.7)
+        specifier: ^0.3.0
+        version: 0.3.0(@langchain/core@1.2.18)(zod@4.6.7)
       bullmq:
         specifier: ~6.3.17
         version: 6.3.17(ioredis@6.0.0)
@@ -311,8 +311,8 @@ importers:
         specifier: ^1.2.18
         version: 1.2.18
       '@meirakrish/llm-kit':
-        specifier: ^0.2.0
-        version: 0.2.0(@langchain/core@1.2.18)(zod@4.6.7)
+        specifier: ^0.3.0
+        version: 0.3.0(@langchain/core@1.2.18)(zod@4.6.7)
       bullmq:
         specifier: ~6.3.17
         version: 6.3.17(ioredis@6.0.0)
@@ -332,6 +332,22 @@ importers:
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
+
+  packages/eval:
+    dependencies:
+      '@cairn/core':
+        specifier: workspace:*
+        version: link:../core
+      '@langchain/core':
+        specifier: ^1.2.18
+        version: 1.2.18
+      '@meirakrish/llm-kit':
+        specifier: ^0.3.0
+        version: 0.3.0(@langchain/core@1.2.18)(zod@4.6.7)
+    devDependencies:
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
 
   packages/shared:
     dependencies:
@@ -974,8 +990,8 @@ packages:
     peerDependencies:
       '@langchain/core': ^1.0.0
 
-  '@meirakrish/llm-kit@0.2.0':
-    resolution: {integrity: sha512-6mR/wB8YxMUNVkskcGyiHhpU1b6gJCVHOfyGHZgyqfyDl8Jodj8C74566v3Phz1WhVLA8f7G9UM1VspB73YPFw==}
+  '@meirakrish/llm-kit@0.3.0':
+    resolution: {integrity: sha512-JSntZgZlscIUM7JBuKymNlDgQigZJH6PSbch1yK0n9qnC37OcrF6NvokPoW2fLqwkDutZo8GRPTKzEeCt/1zFA==}
     engines: {node: '>=22.19'}
     peerDependencies:
       '@langchain/anthropic': ^1.5.0
@@ -3394,7 +3410,7 @@ snapshots:
       '@langchain/core': 1.2.18
       ollama: 0.6.4
 
-  '@meirakrish/llm-kit@0.2.0(@langchain/core@1.2.18)(zod@4.6.7)':
+  '@meirakrish/llm-kit@0.3.0(@langchain/core@1.2.18)(zod@4.6.7)':
     dependencies:
       '@langchain/core': 1.2.18
       '@langchain/ollama': 1.3.0(@langchain/core@1.2.18)

@@ -1,0 +1,17 @@
+{
+  "name": "@cairn/eval",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "tsx --env-file-if-exists=../../.env src/run.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@cairn/core": "workspace:*",
+    "@langchain/core": "^1.2.18",
+    "@meirakrish/llm-kit": "^0.3.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}

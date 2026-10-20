@@ -1,0 +1,227 @@
+{
+  "$comment": "Retrieval eval. A question is answered when, for each expected passage, some retrieved chunk of that source contains `contains` (case and whitespace ignored). `any: true` means one of the expected passages is enough. `style`: direct (shares words with the passage), paraphrase (little word overlap), exact (an identifier).",
+  "questions": [
+    {
+      "id": "con-rep-age",
+      "style": "direct",
+      "question": "What is the minimum age to serve as a Representative?",
+      "expect": [{ "source": "constitution.pdf", "contains": "Age of twenty five Years" }]
+    },
+    {
+      "id": "con-senators",
+      "style": "direct",
+      "question": "How many senators does each state have?",
+      "expect": [{ "source": "constitution.pdf", "contains": "two Senators from each State" }]
+    },
+    {
+      "id": "con-war",
+      "style": "direct",
+      "question": "Who has the power to declare war?",
+      "expect": [{ "source": "constitution.pdf", "contains": "To declare War" }]
+    },
+    {
+      "id": "con-president-age",
+      "style": "paraphrase",
+      "question": "How old do you have to be to become head of state?",
+      "expect": [
+        { "source": "constitution.pdf", "contains": "attained to the Age of thirty five Years" }
+      ]
+    },
+    {
+      "id": "con-senate-chair",
+      "style": "paraphrase",
+      "question": "Who chairs the upper chamber of Congress?",
+      "expect": [{ "source": "constitution.pdf", "contains": "shall be President of the Senate" }]
+    },
+    {
+      "id": "con-revenue",
+      "style": "direct",
+      "question": "Where must bills for raising revenue originate?",
+      "expect": [
+        {
+          "source": "constitution.pdf",
+          "contains": "All Bills for raising Revenue shall originate"
+        }
+      ]
+    },
+    {
+      "id": "con-ratification",
+      "style": "paraphrase",
+      "question": "How many states had to approve the document for it to take effect?",
+      "expect": [
+        {
+          "source": "constitution.pdf",
+          "contains": "Ratification of the Conventions of nine States"
+        }
+      ]
+    },
+    {
+      "id": "con-habeas",
+      "style": "paraphrase",
+      "question": "When may the government hold people without bringing them before a judge?",
+      "expect": [
+        { "source": "constitution.pdf", "contains": "Writ of Habeas Corpus shall not be suspended" }
+      ]
+    },
+
+    {
+      "id": "eos-possessive",
+      "style": "direct",
+      "question": "How do you form the possessive of a singular noun?",
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "Follow this rule whatever the final consonant"
+        }
+      ]
+    },
+    {
+      "id": "eos-serial-comma",
+      "style": "paraphrase",
+      "question": "Should there be a comma before the 'and' in a list like red, white and blue?",
+      "expect": [{ "source": "elements-of-style.txt", "contains": "red, white, and blue" }]
+    },
+    {
+      "id": "eos-active",
+      "style": "direct",
+      "question": "Why is the active voice preferred over the passive?",
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "The active voice is usually more direct and vigorous"
+        }
+      ]
+    },
+    {
+      "id": "eos-needless",
+      "style": "paraphrase",
+      "question": "Why should I cut unnecessary words from my sentences?",
+      "expect": [{ "source": "elements-of-style.txt", "contains": "Vigorous writing is concise" }]
+    },
+    {
+      "id": "eos-topic-sentence",
+      "style": "direct",
+      "question": "How should each paragraph begin and end?",
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "enables him to discover the purpose of each paragraph"
+        }
+      ]
+    },
+    {
+      "id": "eos-positive",
+      "style": "paraphrase",
+      "question": "How can I avoid sounding timid and noncommittal in my writing?",
+      "expect": [{ "source": "elements-of-style.txt", "contains": "Make definite assertions" }]
+    },
+    {
+      "id": "eos-comma-splice",
+      "style": "direct",
+      "question": "What punctuation joins two independent clauses without a conjunction?",
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "the proper mark of punctuation is a semicolon"
+        }
+      ]
+    },
+    {
+      "id": "eos-fact-that",
+      "style": "direct",
+      "question": "What is wrong with the expression 'the fact that'?",
+      "expect": [{ "source": "elements-of-style.txt", "contains": "should be revised out of" }]
+    },
+    {
+      "id": "eos-related-words",
+      "style": "paraphrase",
+      "question": "Where in a sentence should words that belong together in meaning go?",
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "bring together the words, and groups of words"
+        }
+      ]
+    },
+
+    {
+      "id": "des-storage",
+      "style": "direct",
+      "question": "Which object storage does Cairn use in development?",
+      "expect": [{ "source": "design.md", "contains": "Garage for dev" }]
+    },
+    {
+      "id": "des-sealed",
+      "style": "paraphrase",
+      "question": "Can a shared knowledge base hide where its answers came from?",
+      "expect": [{ "source": "design.md", "contains": "answers only, with no sources shown" }]
+    },
+    {
+      "id": "des-session",
+      "style": "paraphrase",
+      "question": "Where is the login state kept after someone signs in with Google?",
+      "expect": [{ "source": "design.md", "contains": "httpOnly cookie backed by Redis" }]
+    },
+    {
+      "id": "des-chunk-size",
+      "style": "direct",
+      "question": "How large are the chunks that uploaded documents are split into?",
+      "expect": [{ "source": "design.md", "contains": "600 tokens with overlap" }]
+    },
+    {
+      "id": "des-eval",
+      "style": "exact",
+      "question": "recall@k",
+      "expect": [{ "source": "design.md", "contains": "scored with recall@k" }]
+    },
+
+    {
+      "id": "kit-truncate",
+      "style": "direct",
+      "question": "What happens when a prompt is longer than Ollama's context window?",
+      "expect": [{ "source": "llm-kit.md", "contains": "oversized prompt fails with a clear" }]
+    },
+    {
+      "id": "kit-json-retry",
+      "style": "paraphrase",
+      "question": "What does the library do if the model returns malformed JSON?",
+      "expect": [
+        {
+          "source": "llm-kit.md",
+          "contains": "Validates every structured answer against its zod schema"
+        }
+      ]
+    },
+    {
+      "id": "kit-publish",
+      "style": "paraphrase",
+      "question": "How are new versions of the package released without storing a registry token?",
+      "expect": [{ "source": "llm-kit.md", "contains": "trusted publishing" }]
+    },
+    {
+      "id": "kit-providers",
+      "style": "direct",
+      "question": "Which LLM providers can be configured?",
+      "expect": [
+        { "source": "llm-kit.md", "contains": "One config for Ollama, Anthropic and OpenAI" }
+      ]
+    },
+    {
+      "id": "kit-idle",
+      "style": "exact",
+      "question": "idleTimeoutMs",
+      "expect": [{ "source": "llm-kit.md", "contains": "idleTimeoutMs" }]
+    },
+
+    {
+      "id": "both-embed-provider",
+      "style": "paraphrase",
+      "question": "Why can't the Claude provider be used to compute vectors?",
+      "any": true,
+      "expect": [
+        { "source": "design.md", "contains": "Anthropic has no embedding API" },
+        { "source": "llm-kit.md", "contains": "Anthropic has no embedding API" }
+      ]
+    }
+  ]
+}

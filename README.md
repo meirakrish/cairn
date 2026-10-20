@@ -71,6 +71,7 @@ Apps run on WSL with `pnpm dev`; Postgres (pgvector), Redis and Garage (S3-compa
 | `pnpm typecheck`     | TypeScript and svelte-check                                       |
 | `pnpm format`        | Prettier (`format:check` to verify only)                          |
 | `pnpm test`          | Vitest: core and api against `cairn_test` (needs `infra:forward`) |
+| `pnpm eval`          | Retrieval eval: recall@k and MRR on a fixed corpus (needs Ollama) |
 | `pnpm db:generate`   | Generate a SQL migration from the Drizzle schema                  |
 | `pnpm db:migrate`    | Apply pending migrations as `postgres`                            |
 | `pnpm infra:up`      | Apply the minikube overlay                                        |
@@ -164,3 +165,11 @@ Uploads accept text, Markdown and PDF. The type comes from the file's bytes (a P
 Helpers live in `@cairn/core/testing` and `apps/api/src/testing.ts`.
 
 CI (`.github/workflows/ci.yml`) runs the same checks, currently by hand only (Actions tab → CI → Run workflow), with Postgres (pgvector) and Redis as service containers, plus a `kubectl kustomize` build of the minikube overlay.
+
+## Retrieval eval
+
+`pnpm eval` measures how well search finds the right passages. It ingests the fixed corpus in `packages/eval/corpus/` (the US Constitution as a PDF, Strunk's _The Elements of Style_, and frozen copies of DESIGN.md and llm-kit's README) into its own database `cairn_eval` with the real embedder, then asks the 28 questions in `packages/eval/questions.json` under several search settings.
+
+A question counts as answered at rank r when a chunk at rank r of the expected source contains the expected phrase. The run prints recall@1/3/8 and MRR per setting (and per question style: direct, paraphrase, exact) plus each question's rank, and writes `packages/eval/results/latest.json` (gitignored). Recall@8 matters most, since the top 8 chunks are what the model reads.
+
+Run it after any change to chunking, embedding or search. Results vary by about one question between runs (random chunk ids break ties; HNSW is approximate). Don't edit the corpus or questions to make a run pass; add questions instead.

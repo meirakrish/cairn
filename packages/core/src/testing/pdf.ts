@@ -1,6 +1,6 @@
 /**
- * A minimal valid PDF with one text line per page (Helvetica, ASCII only). An empty string makes a
- * page with no text, like a scanned page.
+ * A minimal valid PDF, one string per page (Helvetica, ASCII only). Newlines in a page start new lines.
+ * An empty string makes a page with no text, like a scanned page.
  */
 export function makePdf(pages: string[]): Uint8Array {
   const objects: string[] = [];
@@ -10,8 +10,11 @@ export function makePdf(pages: string[]): Uint8Array {
   const tree = add('');
   const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
   const kids = pages.map((text) => {
-    const escaped = text.replace(/[\\()]/g, (c) => `\\${c}`);
-    const ops = text ? `BT /F1 12 Tf 72 720 Td (${escaped}) Tj ET` : '';
+    const lines = text
+      .split('\n')
+      .map((line) => `(${line.replace(/[\\()]/g, (c) => `\\${c}`)}) Tj`)
+      .join(' T* ');
+    const ops = text ? `BT /F1 11 Tf 14 TL 72 740 Td ${lines} ET` : '';
     const content = add(`<< /Length ${ops.length} >>\nstream\n${ops}\nendstream`);
     return add(
       `<< /Type /Page /Parent ${tree} 0 R /MediaBox [0 0 612 792] /Contents ${content} 0 R ` +

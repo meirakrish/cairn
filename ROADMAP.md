@@ -115,15 +115,15 @@ Plan decisions (agreed 2026-10-18):
 
 ## Phase 3: query
 
-| Step | What                                                                                                                          | Status    | Branch                |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------- | --------- | --------------------- |
-| 1    | llm-kit v0.3 (llm-kit repo): `LlmClient.stream()` (idle timeout, retry only before text, cancel on early stop), scripted fake | in review | llm-kit `feat/stream` |
-| 2    | Retrieval: `RetrievalService` (vector + keyword, reciprocal rank fusion), `query_log` table + RLS                             | next      |                       |
-| 3    | Eval: fixed corpus + 20–30 questions with expected passages; `pnpm eval` → recall@k / MRR per mode (local, needs Ollama)      | next      |                       |
-| 4    | Answers: `AnswerService` (prompt, context, citations), `POST /api/cairns/:id/query` streamed over SSE, rate limit, log        | todo      |                       |
-| 5    | Web: Ask panel with streamed answer and clickable `[n]` citations                                                             | todo      |                       |
+| Step | What                                                                                                                          | Status | Branch                   |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
+| 1    | llm-kit v0.3 (llm-kit repo): `LlmClient.stream()` (idle timeout, retry only before text, cancel on early stop), scripted fake | done   | llm-kit `feat/stream`    |
+| 2    | Retrieval: `RetrievalService` (vector + keyword, reciprocal rank fusion), `query_log` table + RLS                             | done   | `phase3/step2-retrieval` |
+| 3    | Eval: fixed corpus + 20–30 questions with expected passages; `pnpm eval` → recall@k / MRR per mode (local, needs Ollama)      | done   | `phase3/step3-eval`      |
+| 4    | Answers: `AnswerService` (prompt, context, citations), `POST /api/cairns/:id/query` streamed over SSE, rate limit, log        | next   |                          |
+| 5    | Web: Ask panel with streamed answer and clickable `[n]` citations                                                             | todo   |                          |
 
-Step 1 status: `stream()` checked live after the driver update (NVIDIA 617.42): streamed a correct answer, early stop cancelled in 256 ms. Warm `qwen3.5:9b`: ~54 tok/s, ~50 ms prompt; cold load 41–78 s. Ready to merge and tag `v0.3.0`.
+Step 1 status: `stream()` checked live after the driver update (NVIDIA 617.42): streamed a correct answer, early stop cancelled in 256 ms. Warm `qwen3.5:9b`: ~54 tok/s, ~50 ms prompt; cold load 41–78 s. Merged and published as `0.3.0`.
 
 Step 2 as built:
 
@@ -133,6 +133,23 @@ Step 2 as built:
 - Vector: `set local hnsw.iterative_scan = relaxed_order` and `hnsw.ef_search = max(100, candidates)`, then re-sorted by distance. EXPLAIN as `cairn_app` shows the HNSW index is used under RLS. The keyword query was a seq scan in the test (4 ms for 20k chunks; even postgres chose a seq scan there), and `@@` isn't leakproof, so RLS may block the GIN index: revisit for large cairns.
 - `query_log` (cairn_id, user_id, question, chunk_count, latency_ms, created_at) with RLS via the cairn; written from step 4.
 - Tests use a bag-of-words embedder so ranking is predictable: right passage first, instruction prefix, keyword-only ids, fusion, stopword-only questions, cairn/RLS isolation, a 3-chunk cairn next to 300 closer chunks in another cairn.
+
+Step 3 as built:
+
+- `packages/eval`: `corpus/` (constitution.txt → a 50-lines-per-page PDF at run time via `makePdf`, which now supports multi-line pages; elements-of-style.txt; design.md and llm-kit.md frozen copies; provenance in `corpus/README.md`), `questions.json` (28: 13 direct, 13 paraphrase, 2 exact; each expects a source + a short phrase from the passage body, not a table of contents), `src/metrics.ts` (+ tests), `src/run.ts`.
+- `pnpm eval` → own DB `cairn_eval` (via `prepareTestDatabase` with `TEST_DATABASE_NAME`), real embedder, MemoryObjectStore; ~86 chunks, ~3.5 s to ingest once the model is loaded.
+- Tuning: equal-weight RRF ranked worse at the top than vector alone (MRR 0.71 vs 0.74), because a chunk found by both searches at middling ranks beat vector's top hit when keywords missed. `keywordWeight` (default `DEFAULT_KEYWORD_WEIGHT = 0.3`) fixed it; 0.5 and 0.7 were in between.
+- Baseline (2026-10-20, qwen3-embedding:0.6b, 2400/360 chunking):
+
+  | setting                      | R@1 | R@3 | R@8  | MRR  |
+  | ---------------------------- | --- | --- | ---- | ---- |
+  | hybrid (keyword ×0.3, app)   | 64% | 79% | 100% | 0.75 |
+  | hybrid, equal weights        | 61% | 79% | 100% | 0.72 |
+  | vector                       | 64% | 79% | 96%  | 0.74 |
+  | keyword                      | 36% | 50% | 79%  | 0.48 |
+  | hybrid, no query instruction | 54% | 82% | 96%  | 0.68 |
+
+  Runs vary by ~1 question. Weakest: con-war, con-senate-chair, eos-fact-that, des-chunk-size (ranks 5–7); candidates for a reranker or chunking changes later.
 
 Plan decisions (agreed 2026-10-20):
 
@@ -150,8 +167,9 @@ Plan decisions (agreed 2026-10-20):
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; routes `/` and `/cairns/[id]`, `+error.svelte`; src/lib/api.ts (incl. XHR upload), src/lib/app.css
 apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry vs fail), index.ts; dev with tsx watch, build with tsdown
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
+packages/eval    retrieval eval: corpus/, questions.json, src/run.ts (`pnpm eval`)
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/retrieval/ (RetrievalService, keywordQuery); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -182,7 +200,7 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Composite-key and unique violations fire in index order: a test meant to hit `chunks_source_fk` hit `chunks_source_ordinal_key` first. Pick values that only break the constraint under test.
 - Ollama is reached from WSL at the Windows host IP (`OLLAMA_HOST=http://172.19.208.1:11434` today; it can change after a reboot). The Windows firewall rules `ollama.exe` are limited to `172.16.0.0/12` with edge traversal blocked (UDP rule disabled), because the PC has public IPv6 addresses.
 - pnpm's `minimumReleaseAge` rejects packages published in the last day. When `pnpm add` offers to add a `minimumReleaseAgeExclude`, don't: pin a slightly older version instead (e.g. `bullmq@~6.3.15`). If a too-new version already landed in the lockfile, restore `pnpm-lock.yaml` and the package.json files first.
-- TODO after 2026-10-21 19:30 UTC: remove the `minimumReleaseAgeExclude` entry for `@meirakrish/llm-kit@0.2.0` in `pnpm-workspace.yaml` (added because the release was minutes old; only our own package may go there).
+- TODO after 2026-10-21 ~21:00 UTC: remove the `minimumReleaseAgeExclude` entry for `@meirakrish/llm-kit@0.3.0` in `pnpm-workspace.yaml` (added because the release was minutes old; only our own package may go there). All packages use llm-kit `^0.3.0`.
 - `msgpackr-extract` (bullmq's optional native helper) is `false` in `allowBuilds`: prebuilt binaries are enough.
 - Express 5 types `req.params` values as `string | string[]`; use `idParam()` in `apps/api/src/cairns.ts`.
 - Worker shutdown takes a few seconds: `worker.close()` waits for BullMQ's blocking Redis poll to return.
