@@ -43,6 +43,30 @@ Decisions made during planning:
 - CI (step 7): `.github/workflows/ci.yml`, on push to main and PRs. Job `check` runs format, lint, typecheck, build and test against `pgvector/pgvector` + `redis` service containers (same images as deploy/base, no Redis password); job `deploy` runs `kubectl kustomize` on the minikube overlay after copying `secrets.env.example`. Node from `.nvmrc`, pnpm from `packageManager`.
 - DB roles: `postgres` owns tables and runs migrations (`DATABASE_ADMIN_URL`); the api uses `cairn_app` (`DATABASE_URL`), created by `deploy/base/postgres/init-db.sh` with default privileges on tables `postgres` creates.
 
+## Phase 2: ingest
+
+| Step | What                                                                                                                        | Status    | Branch                  |
+| ---- | --------------------------------------------------------------------------------------------------------------------------- | --------- | ----------------------- |
+| 1    | llm-kit v0.2 (in the llm-kit repo): `Embedder` (Ollama + OpenAI), `EMBED_*` config, `fakeEmbedder`; tag `v0.2.0` to publish | in review | llm-kit `feat/embedder` |
+| 2    | Schema: `sources`, `chunks` (`vector(1024)` + HNSW, generated `tsv` + GIN), RLS via the parent cairn; core services         | next      |                         |
+| 3    | Upload api: `ObjectStore` over Garage, `GET /api/cairns/:id`, sources list/upload/delete, MIME sniffing, BullMQ enqueue     | todo      |                         |
+| 4    | `apps/worker`: BullMQ job extract → chunk → embed → store, `pending → processing → ready \| failed`                         | todo      |                         |
+| 5    | Live status: worker publishes on Redis pub/sub, api streams `GET /api/cairns/:id/events` (SSE)                              | todo      |                         |
+| 6    | Web: `/cairns/[id]` with drag-and-drop upload, live source list, delete                                                     | todo      |                         |
+
+Each step brings its own tests. Plan decisions (agreed 2026-10-18):
+
+- `stream()` moves from llm-kit v0.2 to Phase 3, where answers are streamed.
+- Embeddings: `qwen3-embedding:0.6b` at 1024 dims (`EMBED_DIMENSIONS=1024`), so the HNSW index survives a provider change (text-embedding-3 can also return 1024).
+- The worker runs each job as the uploader via `withUser` (job carries the user id): no RLS-bypassing role.
+- RLS on `sources`/`chunks`: visible when the parent cairn is visible, so Phase 4 only widens the cairn policy.
+- Uploads: 25 MB/file, type sniffed from bytes, only text/Markdown/PDF, key `cairns/<cairnId>/sources/<sourceId>`, owner-only until Phase 4.
+- Extraction: PDF via `unpdf` (page per chunk), Markdown keeps the heading path, text keeps a char offset; caps on pages, chars and time.
+- Chunking: own splitter, ~600 tokens (≈2400 chars) with ~15% overlap, preferring paragraph then sentence boundaries.
+- `tsv` uses the `simple` text-search config (language-agnostic).
+- Tests use an in-memory `ObjectStore`; CI gets no Garage. The S3 store is checked by hand against Garage.
+- Worker runs in `pnpm dev` on WSL; `OLLAMA_HOST` points at the Windows host. The in-cluster `ollama` Service waits until apps run in the cluster.
+
 ## Current layout
 
 ```
@@ -92,4 +116,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 2 (ingest), plan to be agreed before code.** See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: `embed()`, `stream()`), Phase 3 query, Phase 4 sharing.
+Phase 2 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
