@@ -255,12 +255,26 @@
       </div>
       {#if canUpload}
         <div class="add-sources">
-          <button type="button" onclick={() => fileInput?.click()}>Add files</button>
+          <button type="button" onclick={() => fileInput?.click()}>
+            <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+              ><path
+                d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
+              /></svg
+            >
+            Add files
+          </button>
           <button
             type="button"
             aria-expanded={addingLinks}
-            onclick={() => (addingLinks = !addingLinks)}>Add web pages</button
+            onclick={() => (addingLinks = !addingLinks)}
           >
+            <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+              ><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path
+                d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"
+              /></svg
+            >
+            Add web pages
+          </button>
         </div>
         {#if addingLinks}<AddLinks cairnId={data.cairn.id} onadded={upsert} />{/if}
       {/if}
