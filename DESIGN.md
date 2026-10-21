@@ -77,6 +77,9 @@ shares     (id, cairn_id, grantee_email?, link_token_hash?, role, visibility, ex
 share_redemptions (share_id, user_id, created_at)
 api_keys   (id, cairn_id, share_id, hashed_key, last_used_at)
 query_log  (id, cairn_id, user_id, share_id, question, chunk_count, latency_ms, created_at)
+quiz_questions (id, cairn_id, chunk_id, question, choices, correct_choice, answer, explanation,
+            created_by, created_at)
+quiz_attempts  (id, question_id, cairn_id, user_id, choice, verdict, answered_at, created_at)
 ```
 
 - Every table that holds cairn data has a `cairn_id`. Postgres Row-Level Security enforces access.
@@ -97,4 +100,5 @@ query_log  (id, cairn_id, user_id, share_id, question, chunk_count, latency_ms, 
 - **Phase 2, ingest**: text, PDF and Markdown. llm-kit v0.2 (embeddings).
 - **Phase 3, query**: hybrid retrieval, cited answers streamed over SSE (llm-kit `stream()`), eval set.
 - **Phase 4, sharing**: email and link shares, cited and sealed.
-- **Next stage**: images (needs a vision model), CSV/JSON, API keys, MCP server over `packages/core`.
+- **Quiz**: multiple-choice questions written from passages, kept in a per-cairn bank and reused, written ahead in the background; cited callers only.
+- **Later**: API keys, MCP server over `packages/core`. (Images and CSV/JSON were done in Phase 5.)

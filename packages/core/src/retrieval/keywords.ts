@@ -12,15 +12,20 @@ const STOPWORDS = new Set(
 
 const MAX_TERMS = 32;
 
+/** The words of a text that carry meaning: lowercased letters and digits, no stopwords or 1-letter words. */
+export function contentWords(text: string): Set<string> {
+  const terms = new Set<string>();
+  for (const [word] of text.toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)) {
+    if (word.length > 1 && !STOPWORDS.has(word)) terms.add(word);
+  }
+  return terms;
+}
+
 /**
  * Turns a question into an OR tsquery string ("deadline | filing"), or undefined when nothing is left.
  * Terms are letters and digits only, so the result is safe to pass to to_tsquery.
  */
 export function keywordQuery(question: string): string | undefined {
-  const terms = new Set<string>();
-  for (const [word] of question.toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)) {
-    if (word.length > 1 && !STOPWORDS.has(word)) terms.add(word);
-    if (terms.size === MAX_TERMS) break;
-  }
-  return terms.size ? [...terms].join(' | ') : undefined;
+  const terms = [...contentWords(question)].slice(0, MAX_TERMS);
+  return terms.length ? terms.join(' | ') : undefined;
 }

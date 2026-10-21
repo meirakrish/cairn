@@ -24,6 +24,8 @@ const Env = z.object({
   QUERY_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
   // Questions per minute through one share, across everyone using it (a link can reach many people).
   SHARE_QUERY_RATE_LIMIT: z.coerce.number().int().min(1).default(60),
+  // Quiz questions written ahead in the background after each one served; 0 turns it off.
+  QUIZ_PREFETCH: z.coerce.number().int().min(0).max(5).default(2),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
 });
@@ -43,6 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     sseMaxStreamsPerUser: e.SSE_MAX_STREAMS_PER_USER,
     queryRateLimit: e.QUERY_RATE_LIMIT,
     shareQueryRateLimit: e.SHARE_QUERY_RATE_LIMIT,
+    quizPrefetch: e.QUIZ_PREFETCH,
     uploadMaxBytes: Math.floor(e.UPLOAD_MAX_MEGA_BYTES * 1_000_000),
     s3: {
       endpoint: e.S3_ENDPOINT,

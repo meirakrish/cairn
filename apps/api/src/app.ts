@@ -5,6 +5,7 @@ import {
   ForbiddenError,
   InvalidInputError,
   NotFoundError,
+  QuizService,
   RetrievalService,
   redisSourcePublisher,
   ShareService,
@@ -25,6 +26,7 @@ import { cairnsRouter } from './cairns';
 import type { EventHub } from './event-hub';
 import { eventsRouter } from './events';
 import { queryRouter } from './query';
+import { quizRouter } from './quiz';
 import { shareLinksRouter, sharesRouter } from './shares';
 import { StreamLimiter } from './stream-limit';
 import type { Config } from './config';
@@ -40,7 +42,7 @@ export interface AppDeps {
   hub: EventHub;
   /** Embeds questions for retrieval; must match the worker's model (EMBED_MODEL). */
   embedder: Embedder;
-  /** Writes the answers. */
+  /** Writes the answers, quiz questions and grades. */
   llm: LlmClient;
 }
 
@@ -67,6 +69,7 @@ export function createApp({ config, db, redis, storage, ingest, hub, embedder, l
   });
   app.use('/api/cairns', eventsRouter({ config, cairns, sources, sessions, hub, limiter }));
   app.use('/api/cairns', queryRouter({ config, cairns, answers, redis }));
+  app.use('/api/cairns', quizRouter({ config, cairns, quiz: new QuizService(db, llm), redis }));
   app.use('/api/cairns', cairnsRouter({ config, cairns, sources, storage, ingest }));
   const shares = new ShareService(db);
   app.use('/api/cairns', sharesRouter({ shares }));

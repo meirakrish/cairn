@@ -5,6 +5,7 @@
   import AskPanel from '#lib/AskPanel.svelte';
   import CairnDialog from '#lib/CairnDialog.svelte';
   import Popover from '#lib/Popover.svelte';
+  import QuizPanel from '#lib/QuizPanel.svelte';
   import { sharedBadge } from '#lib/share.ts';
   import SharePanel from '#lib/SharePanel.svelte';
   import type { PageProps } from './$types';
@@ -38,6 +39,8 @@
   let rowErrors = $state<Record<string, string>>({});
   let fileInput = $state<HTMLInputElement>();
   let editDialog = $state<CairnDialog>();
+  // Ask questions, or be quizzed (callers who can see sources only; the api enforces it too).
+  let mode = $state<'ask' | 'quiz'>('ask');
   let nextKey = 0;
 
   const byNewest = (a: Source, b: Source) => b.createdAt.localeCompare(a.createdAt);
@@ -352,12 +355,33 @@
   </ul>
 {/if}
 
-<AskPanel
-  cairnId={data.cairn.id}
-  readySources={sources.filter((s) => s.status === 'ready').length}
-  {sealed}
-  onattach={canUpload && !sealed ? () => fileInput?.click() : undefined}
-/>
+{#if !sealed}
+  <div class="mode-switch" role="tablist" aria-label="Ask or quiz">
+    <button type="button" role="tab" aria-selected={mode === 'ask'} onclick={() => (mode = 'ask')}
+      >Ask</button
+    >
+    <button type="button" role="tab" aria-selected={mode === 'quiz'} onclick={() => (mode = 'quiz')}
+      >Quiz</button
+    >
+  </div>
+{/if}
+
+{#if mode === 'quiz' && !sealed}
+  <!-- A new cairn starts a new quiz. -->
+  {#key data.cairn.id}
+    <QuizPanel
+      cairnId={data.cairn.id}
+      readySources={sources.filter((s) => s.status === 'ready').length}
+    />
+  {/key}
+{:else}
+  <AskPanel
+    cairnId={data.cairn.id}
+    readySources={sources.filter((s) => s.status === 'ready').length}
+    {sealed}
+    onattach={canUpload && !sealed ? () => fileInput?.click() : undefined}
+  />
+{/if}
 
 {#if isOwner}<CairnDialog bind:this={editDialog} />{/if}
 

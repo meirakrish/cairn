@@ -183,3 +183,38 @@ export const SealedAnswerEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('error'), message: z.string() }),
 ]);
 export type SealedAnswerEvent = z.infer<typeof SealedAnswerEvent>;
+
+export const QuizVerdict = z.enum(['correct', 'wrong']);
+export type QuizVerdict = z.infer<typeof QuizVerdict>;
+
+/** A multiple-choice question put to the caller, before they answer: the right option stays on the server. `id` is the attempt. */
+export const QuizQuestion = z.object({
+  id: z.uuid(),
+  question: z.string(),
+  choices: z.array(z.string()),
+  /** Every question in the bank was already put to the caller, so this one is a repeat. */
+  seenBefore: z.boolean(),
+});
+export type QuizQuestion = z.infer<typeof QuizQuestion>;
+
+export const QuizQuestionResponse = z.object({ question: QuizQuestion });
+export type QuizQuestionResponse = z.infer<typeof QuizQuestionResponse>;
+
+/** The option's index. */
+export const QuizAnswerRequest = z.object({ choice: z.number().int().min(0) });
+export type QuizAnswerRequest = z.infer<typeof QuizAnswerRequest>;
+
+export const QuizResult = z.object({
+  verdict: QuizVerdict,
+  /** The right option's index, and its text. */
+  correctChoice: z.number().int(),
+  answer: z.string(),
+  /** Why the right option is right. */
+  explanation: z.string(),
+  /** The passage the question was written from. */
+  passage: CitedPassage.omit({ n: true }),
+});
+export type QuizResult = z.infer<typeof QuizResult>;
+
+export const QuizResultResponse = z.object({ result: QuizResult });
+export type QuizResultResponse = z.infer<typeof QuizResultResponse>;

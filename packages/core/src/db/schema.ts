@@ -71,6 +71,9 @@ const cairnVisible = (cairnId: unknown) =>
 // Adding sources and writing chunks (the worker runs as the uploader): owners and editors.
 const cairnEditable = (cairnId: unknown) =>
   sql`exists (select 1 from cairn_access(${cairnId}) a where a.role in ('owner', 'editor'))`;
+// The quiz: callers who can see sources (owners and cited grantees).
+const cairnCited = (cairnId: unknown) =>
+  sql`exists (select 1 from cairn_access(${cairnId}) a where a.visibility = 'cited')`;
 const cairnOwned = (cairnId: unknown) =>
   sql`exists (select 1 from cairns c where c.id = ${cairnId} and c.owner_id = ${currentUserId})`;
 
@@ -265,6 +268,89 @@ export const queryLog = pgTable(
   ],
 );
 
+export const QUIZ_VERDICTS = ['correct', 'wrong'] as const;
+export type QuizVerdict = (typeof QUIZ_VERDICTS)[number];
+
+// A cairn's question bank: multiple-choice questions the model wrote from one chunk each, kept and reused for
+// everyone who can see the cairn's sources (owners and cited grantees). Who was asked what, and
+// how they answered, is in quiz_attempts; the expected answer leaves the server only after an answer.
+export const quizQuestions = pgTable(
+  'quiz_questions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cairnId: uuid('cairn_id')
+      .notNull()
+      .references(() => cairns.id, { onDelete: 'cascade' }),
+    // The question goes when its passage does (source deleted or reprocessed).
+    chunkId: uuid('chunk_id')
+      .notNull()
+      .references(() => chunks.id, { onDelete: 'cascade' }),
+    question: text('question').notNull(),
+    // The options as shown, the index of the right one, its text, and why it is right.
+    choices: jsonb('choices').$type<string[]>().notNull(),
+    correctChoice: integer('correct_choice').notNull(),
+    answer: text('answer').notNull(),
+    explanation: text('explanation').notNull(),
+    // Whose quiz asked for it; the question stays when they go.
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('quiz_questions_cairn_idx').on(t.cairnId),
+    index('quiz_questions_chunk_id_idx').on(t.chunkId),
+    check(
+      'quiz_questions_choice_check',
+      sql`${t.correctChoice} >= 0 and ${t.correctChoice} < jsonb_array_length(${t.choices})`,
+    ),
+    // Read and add on a cairn whose sources you can see; nobody edits the bank.
+    pgPolicy('quiz_questions_read', { for: 'select', using: cairnCited(t.cairnId) }),
+    pgPolicy('quiz_questions_insert', {
+      for: 'insert',
+      withCheck: sql`${t.createdBy} = ${currentUserId} and ${cairnCited(t.cairnId)}`,
+    }),
+  ],
+);
+
+// One question put to one user: created when it is served, completed when they answer.
+export const quizAttempts = pgTable(
+  'quiz_attempts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => quizQuestions.id, { onDelete: 'cascade' }),
+    cairnId: uuid('cairn_id')
+      .notNull()
+      .references(() => cairns.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // The option the caller picked, and whether it was right.
+    choice: integer('choice'),
+    verdict: text('verdict', { enum: QUIZ_VERDICTS }),
+    answeredAt: timestamp('answered_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('quiz_attempts_user_cairn_idx').on(t.userId, t.cairnId, t.createdAt),
+    index('quiz_attempts_question_id_idx').on(t.questionId),
+    check(
+      'quiz_attempts_verdict_check',
+      sql`${t.verdict} is null or ${t.verdict} in (${inList(QUIZ_VERDICTS)})`,
+    ),
+    check(
+      'quiz_attempts_answered_check',
+      sql`(${t.answeredAt} is null) = (${t.verdict} is null) and (${t.verdict} is null) = (${t.choice} is null)`,
+    ),
+    // Your own attempts, on a cairn whose sources you can see.
+    pgPolicy('quiz_attempts_own', {
+      for: 'all',
+      using: sql`${t.userId} = ${currentUserId} and ${cairnCited(t.cairnId)}`,
+      withCheck: sql`${t.userId} = ${currentUserId} and ${cairnCited(t.cairnId)}`,
+    }),
+  ],
+);
+
 export interface ChunkLocation {
   /** 1-based PDF page. */
   page?: number;
@@ -291,3 +377,5 @@ export type Share = typeof shares.$inferSelect;
 export type NewShare = typeof shares.$inferInsert;
 export type QueryLogEntry = typeof queryLog.$inferSelect;
 export type NewChunk = typeof chunks.$inferInsert;
+export type QuizQuestion = typeof quizQuestions.$inferSelect;
+export type QuizAttempt = typeof quizAttempts.$inferSelect;

@@ -5,6 +5,8 @@ import {
   ListCairnsResponse,
   ListSharesResponse,
   MeResponse,
+  QuizQuestionResponse,
+  QuizResultResponse,
   RedeemShareLinkResponse,
   SealedAnswerEvent,
   SourceResponse,
@@ -12,6 +14,8 @@ import {
   type CreateCairnRequest,
   type UpdateCairnRequest,
   type CreateShareRequest,
+  type QuizQuestion,
+  type QuizResult,
   type Share,
   type Source,
   type User,
@@ -29,11 +33,18 @@ export class ApiError extends Error {
   }
 }
 
-async function request(fetch: Fetch, method: string, path: string, body?: unknown) {
+async function request(
+  fetch: Fetch,
+  method: string,
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+) {
   const res = await fetch(path, {
     method,
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -161,4 +172,23 @@ export async function askQuestion(
   }
   const schema = sealed ? SealedAnswerEvent : AnswerEvent;
   for await (const data of sseData(res.body)) onEvent(schema.parse(JSON.parse(data)));
+}
+
+/** A new quiz question; its answer stays on the server until answerQuiz(). */
+export async function newQuizQuestion(
+  cairnId: string,
+  signal?: AbortSignal,
+): Promise<QuizQuestion> {
+  const body = await request(fetch, 'POST', `/api/cairns/${cairnId}/quiz`, {}, signal);
+  return QuizQuestionResponse.parse(body).question;
+}
+
+export async function answerQuiz(
+  cairnId: string,
+  questionId: string,
+  choice: number,
+  signal?: AbortSignal,
+): Promise<QuizResult> {
+  const path = `/api/cairns/${cairnId}/quiz/${questionId}/answer`;
+  return QuizResultResponse.parse(await request(fetch, 'POST', path, { choice }, signal)).result;
 }

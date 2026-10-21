@@ -6,8 +6,7 @@ import type { Redis } from 'ioredis';
 import { requireUser } from './auth/middleware';
 import { idParam, requireAccess } from './cairns';
 import type { Config } from './config';
-import { HttpError } from './errors';
-import { rateLimit } from './rate-limit';
+import { limitQuestions } from './rate-limit';
 
 export interface QueryRouterDeps {
   config: Config;
@@ -31,15 +30,7 @@ export function queryRouter({ config, cairns, answers, redis }: QueryRouterDeps)
     const { question } = QueryRequest.parse(req.body);
     const access = await requireAccess(cairns, userId, cairnId);
 
-    const retryAfter =
-      (await rateLimit(redis, `query:user:${userId}`, config.queryRateLimit, 60)) ||
-      (access.shareId
-        ? await rateLimit(redis, `query:share:${access.shareId}`, config.shareQueryRateLimit, 60)
-        : 0);
-    if (retryAfter) {
-      res.setHeader('Retry-After', String(retryAfter));
-      throw new HttpError(429, `too many questions; try again in ${retryAfter} s`);
-    }
+    await limitQuestions(redis, config, userId, access, res);
 
     const controller = new AbortController();
     res.on('close', () => controller.abort());
