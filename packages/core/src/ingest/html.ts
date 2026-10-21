@@ -12,48 +12,68 @@ export interface HtmlPage {
 }
 
 const MAX_TITLE = 200;
-/** Below this many visible characters, Readability's pick is ignored and the whole body is used. */
+/** Main content or a Readability pick shorter than this (visible characters) falls through. */
 const MIN_ARTICLE_CHARS = 200;
+// Page furniture dropped from marked main content and from the whole body.
+const CHROME =
+  'nav, header, footer, aside, form, [role=navigation], [role=complementary], [role=search], [hidden], [aria-hidden=true]';
 
 /**
- * Reads the main text of a web page: Readability picks the article (dropping menus, footers, ads),
- * Turndown turns it into Markdown, and markdownSections splits it at headings. jsdom parses like a
- * browser but runs no scripts and loads nothing, so pages that only render with JavaScript come out
- * empty.
+ * Reads the main text of a web page as Markdown sections located by heading path. The text is the
+ * part the page marks as main (its only `<article>`, else `<main>`) without menus and the like; on
+ * pages that mark none, Readability picks the article; failing both, the whole body. jsdom parses
+ * like a browser but runs no scripts and loads nothing, so pages that only render with JavaScript
+ * come out empty.
+ *
+ * Marked main content goes first because Readability, which keeps its best block and close
+ * siblings, dropped Wikipedia's section headings (filing "Today" and "Concerns" under the last
+ * subsection) and kept one story of index pages; `<main>` kept every heading, for 5–20% more text.
+ * A lone `<article>` beats `<main>`: it is the post or README without comments, file lists etc.
  */
 export function readHtml(data: Uint8Array, contentType = ''): HtmlPage {
   // A silent console: jsdom reports CSS it can't parse, which is the page's problem, not ours.
   const dom = new JSDOM(decodeHtml(data, contentType), { virtualConsole: new VirtualConsole() });
   try {
-    return readDocument(dom.window.document);
+    const { document } = dom.window;
+    const segments = markdownSections(mainText(document).trim()).filter(
+      (s) => s.text.trim() !== '',
+    );
+    if (segments.length === 0) {
+      throw new PermanentIngestError('no readable text on the page (it may need JavaScript)');
+    }
+    const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content');
+    return { title: cleanTitle(document.title || ogTitle), segments };
   } finally {
     dom.window.close();
   }
 }
 
-function readDocument(document: Document): HtmlPage {
-  const pageTitle = document.title;
-  // Readability changes the document, so keep a copy of the body for the fallback.
+function mainText(document: Document): string {
+  const articles = document.querySelectorAll('article');
+  const marked = [
+    articles.length === 1 ? articles[0] : null,
+    document.querySelector('main, [role=main]'),
+  ];
+  // Readability and withoutChrome change the document, so work on copies.
   const body = document.body?.cloneNode(true) as Element | undefined;
-
-  let article: ReturnType<Readability<string>['parse']> = null;
+  for (const el of marked) {
+    if (!el) continue;
+    const text = withoutChrome(el.cloneNode(true) as Element);
+    if (visibleChars(text) >= MIN_ARTICLE_CHARS) return text;
+  }
   try {
-    article = new Readability(document).parse();
+    const content = new Readability(document).parse()?.content;
+    const text = content ? toMarkdown(content) : '';
+    if (visibleChars(text) >= MIN_ARTICLE_CHARS) return text;
   } catch {
     // Some malformed pages trip Readability; the whole body is the fallback.
   }
+  return body ? withoutChrome(body) : '';
+}
 
-  let markdown = article?.content ? toMarkdown(article.content) : '';
-  if (visibleChars(markdown) < MIN_ARTICLE_CHARS && body) {
-    for (const el of body.querySelectorAll('nav, header, footer, aside, form')) el.remove();
-    const whole = toMarkdown(body.innerHTML);
-    if (visibleChars(whole) > visibleChars(markdown)) markdown = whole;
-  }
-  const segments = markdownSections(markdown.trim()).filter((s) => s.text.trim() !== '');
-  if (segments.length === 0) {
-    throw new PermanentIngestError('no readable text on the page (it may need JavaScript)');
-  }
-  return { title: cleanTitle(article?.title || pageTitle), segments };
+function withoutChrome(el: Element): string {
+  for (const chrome of el.querySelectorAll(CHROME)) chrome.remove();
+  return toMarkdown(el.innerHTML);
 }
 
 const visibleChars = (text: string) => text.replace(/\s/g, '').length;
@@ -88,8 +108,22 @@ turndown.escape = (text) => text;
 const DROPPED = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'IFRAME', 'CANVAS', 'BUTTON']);
 // A function filter: Turndown's tag-name list is typed for HTML elements only, and svg isn't one.
 turndown.remove((node) => DROPPED.has(node.nodeName) || node.nodeName.toLowerCase() === 'svg');
-// Link targets and images add noise to chunks and embeddings; keep the link text only.
-turndown.addRule('linkText', { filter: 'a', replacement: (content) => content });
+// Link targets and images add noise to chunks and embeddings; keep the link text only, and drop
+// permalink anchors (¶, #, §) next to headings.
+turndown.addRule('linkText', {
+  filter: 'a',
+  replacement: (content) => (/^\s*[¶#§🔗]\s*$/u.test(content) ? '' : content),
+});
+// Code in a bare <pre> (Turndown only fences <pre><code>): fenced, so a `# comment` line in it is
+// not taken for a heading.
+turndown.addRule('preformatted', {
+  filter: (node) => node.nodeName === 'PRE' && node.firstElementChild?.nodeName !== 'CODE',
+  replacement: (_, node) => {
+    const code = (node.textContent ?? '').replace(/\n$/, '');
+    const fence = '`'.repeat(Math.max(3, ...(code.match(/`+/g) ?? []).map((m) => m.length + 1)));
+    return `\n\n${fence}\n${code}\n${fence}\n\n`;
+  },
+});
 turndown.addRule('noImages', {
   filter: ['img', 'picture', 'video', 'audio'],
   replacement: () => '',

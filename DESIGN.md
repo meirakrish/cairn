@@ -49,7 +49,7 @@ api, worker ──► llm-kit ──► Ollama (dev) / hosted provider (cloud)
 ## Main flows
 
 - **Auth**: Google OIDC handled by the server (`google-auth-library`). The session is an httpOnly cookie backed by Redis. No JWTs in localStorage.
-- **Ingest**: upload → original saved to Garage → BullMQ job → extract text → chunk (~600 tokens with overlap, keeping the page/section location) → embed → store in Postgres. Source status: `pending → processing → ready | failed`, sent over SSE.
+- **Ingest**: upload (or a URL, which the worker fetches and saves as a snapshot) → original saved to Garage → BullMQ job → extract text → chunk (~600 tokens with overlap, keeping the page/section location) → embed → store in Postgres. Source status: `pending → processing → ready | failed`, sent over SSE.
 - **Query**: check access and mode → hybrid search (pgvector + `tsvector`, reciprocal rank fusion) → LLM answer streamed over SSE → sharing policy applied.
 - **Share**: with a Google account by email, or by a revocable link token with an optional expiry. Links need sign-in; opening one records a redemption, so access always belongs to a user. Roles are `viewer` (query) and `editor` (add sources). The owner is implicit. The mode is `cited` or `sealed`.
 
@@ -88,7 +88,9 @@ quiz_attempts  (id, question_id, cairn_id, user_id, choice, verdict, answered_at
 ## Security
 
 - Uploaded documents are untrusted input, both for parsers and for prompt injection.
-- The worker gets only the database, Redis, Garage and Ollama: no OAuth secrets.
+- The worker gets only the database, Redis, Garage, Ollama and outbound HTTP for web sources: no OAuth secrets.
+- Web sources are fetched by the worker through `fetchUrl`, which connects only to public addresses (checked on the address actually connected to, so DNS rebinding can't slip through), on ports 80/443, re-checking every redirect. A URL must never reach Postgres, Redis, Garage, Ollama or a metadata service. Later, defense in depth: a NetworkPolicy limiting the worker's egress to public IPs.
+- Web pages are untrusted input, like uploaded documents.
 
 ## Quality
 

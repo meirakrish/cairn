@@ -13,12 +13,15 @@ const Env = z.object({
   // One at a time by default: embeddings run on one local GPU.
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(1),
   EMBED_DIMENSIONS: z.coerce.number().int().optional(),
+  // Web pages are capped like uploads (the api reads the same variable).
+  UPLOAD_MAX_MEGA_BYTES: z.coerce.number().positive().default(25),
 });
 
 export type Config = ReturnType<typeof loadConfig>;
 
-// No OAuth or session settings: the worker only needs Postgres, Redis, object storage, the embedder
-// and the chat model (LLM_*, for reading images; it must support vision).
+// No OAuth or session settings: the worker only needs Postgres, Redis, object storage, the embedder,
+// the chat model (LLM_*, for reading images; it must support vision) and the internet (web sources,
+// through fetchUrl, which refuses private and internal addresses).
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const e = Env.parse(env);
   if (e.EMBED_DIMENSIONS !== undefined && e.EMBED_DIMENSIONS !== EMBEDDING_DIMENSIONS) {
@@ -30,6 +33,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     databaseUrl: e.DATABASE_URL,
     redisUrl: e.REDIS_URL,
     concurrency: e.WORKER_CONCURRENCY,
+    fetchMaxBytes: Math.floor(e.UPLOAD_MAX_MEGA_BYTES * 1_000_000),
     s3: {
       endpoint: e.S3_ENDPOINT,
       region: e.S3_REGION,

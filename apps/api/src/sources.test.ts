@@ -260,3 +260,118 @@ describe('GET /api/cairns/:id/sources/:sourceId/file', () => {
       .expect(403);
   });
 });
+
+function addUrl(cookie: string, cairnId: string, url: string) {
+  return request(t.app)
+    .post(`/api/cairns/${cairnId}/sources`)
+    .set('Cookie', cookie)
+    .set('Origin', APP_ORIGIN)
+    .send({ url });
+}
+
+async function shareWith(owner: string, cairnId: string, email: string, role: string) {
+  await request(t.app)
+    .post(`/api/cairns/${cairnId}/shares`)
+    .set('Cookie', owner)
+    .set('Origin', APP_ORIGIN)
+    .send({ kind: 'email', email, role, visibility: 'cited' })
+    .expect(201);
+}
+
+describe('POST /api/cairns/:id/sources with a URL', () => {
+  it('records a pending web source without a fragment and queues it; nothing is stored yet', async () => {
+    const { user, cookie, cairnId } = await signedInWithCairn();
+    const res = await addUrl(cookie, cairnId, ' HTTPS://Example.com:443/trails?id=7#map ').expect(
+      202,
+    );
+    expect(res.body.source).toMatchObject({
+      cairnId,
+      kind: 'web',
+      url: 'https://example.com/trails?id=7',
+      filename: 'https://example.com/trails?id=7',
+      status: 'pending',
+    });
+    expect(t.storage.objects.size).toBe(0);
+    const job = await t.ingest.queue.getJob(res.body.source.id);
+    expect(job?.data).toEqual({ sourceId: res.body.source.id, userId: user.id });
+  });
+
+  it('409s for a page already in the cairn, with the existing source', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    const first = await addUrl(cookie, cairnId, 'https://example.com/a').expect(202);
+    const again = await addUrl(cookie, cairnId, 'https://example.com/a#part-2').expect(409);
+    expect(again.body.error).toMatch(/already in the cairn/);
+    expect(again.body.source.id).toBe(first.body.source.id);
+    // Another cairn may have the same page.
+    const other = await signedInWithCairn();
+    await addUrl(other.cookie, other.cairnId, 'https://example.com/a').expect(202);
+  });
+
+  it('rejects bad and internal URLs without recording anything', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    for (const [url, message] of [
+      ['not a url', /not a valid URL/],
+      ['file:///etc/passwd', /only http and https/],
+      ['http://127.0.0.1/admin', /private or internal/],
+      ['http://169.254.169.254/latest/meta-data/', /private or internal/],
+      ['http://example.com:6379/', /standard web ports/],
+    ] as const) {
+      const res = await addUrl(cookie, cairnId, url).expect(400);
+      expect(res.body.error, url).toMatch(message);
+    }
+    await addUrl(cookie, cairnId, '').expect(400);
+    expect(await t.admin.select().from(sources)).toHaveLength(0);
+  });
+
+  it('lets editors add pages, not viewers', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    const editor = await signedInWithCairn();
+    const viewer = await signedInWithCairn();
+    await shareWith(cookie, cairnId, editor.user.email, 'editor');
+    await shareWith(cookie, cairnId, viewer.user.email, 'viewer');
+    await addUrl(editor.cookie, cairnId, 'https://example.com/e').expect(202);
+    await addUrl(viewer.cookie, cairnId, 'https://example.com/v').expect(403);
+  });
+});
+
+describe('POST /api/cairns/:id/sources/:sourceId/refresh', () => {
+  const refresh = (cookie: string, cairnId: string, sourceId: string) =>
+    request(t.app)
+      .post(`/api/cairns/${cairnId}/sources/${sourceId}/refresh`)
+      .set('Cookie', cookie)
+      .set('Origin', APP_ORIGIN);
+
+  it('sets a ready or failed page back to pending and queues it again', async () => {
+    const { user, cookie, cairnId } = await signedInWithCairn();
+    const { body } = await addUrl(cookie, cairnId, 'https://example.com/a').expect(202);
+    const id = body.source.id as string;
+
+    // Still pending: the first fetch hasn't happened.
+    await refresh(cookie, cairnId, id).expect(409);
+
+    // The worker finished; its job stays in the queue under the source's id.
+    const job = await t.ingest.queue.getJob(id);
+    await job!.remove();
+    await t.ingest.queue.add('ingest', { sourceId: id, userId: user.id }, { jobId: id });
+    await t.admin.update(sources).set({ status: 'failed', error: 'the site answered 503' });
+
+    const res = await refresh(cookie, cairnId, id).expect(202);
+    expect(res.body.source).toMatchObject({ id, status: 'pending', error: null });
+    expect((await t.ingest.queue.getJob(id))?.data).toEqual({ sourceId: id, userId: user.id });
+  });
+
+  it('refuses uploads, viewers, and other cairns', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    const file = (await upload(cookie, cairnId, 'hello').expect(202)).body.source.id as string;
+    await t.admin.update(sources).set({ status: 'ready' });
+    await refresh(cookie, cairnId, file).expect(400);
+
+    const page = (await addUrl(cookie, cairnId, 'https://example.com/a').expect(202)).body.source
+      .id as string;
+    await t.admin.update(sources).set({ status: 'ready' });
+    const viewer = await signedInWithCairn();
+    await shareWith(cookie, cairnId, viewer.user.email, 'viewer');
+    await refresh(viewer.cookie, cairnId, page).expect(403);
+    await refresh(viewer.cookie, viewer.cairnId, page).expect(404);
+  });
+});

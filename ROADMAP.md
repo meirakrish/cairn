@@ -362,7 +362,7 @@ Add a source by URL: Cairn fetches the page, keeps a snapshot, and indexes its m
 | ---- | -------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------- |
 | 1    | Safe fetcher in core: http(s) only, ports 80/443, public IPs only (checked at connect time), redirects re-checked, caps    | done    | `phase7/step1-fetch`      |
 | 2    | HTML → main text: Readability + jsdom → Markdown → `markdownSections` (heading locations); page title; kind `web`, `url`   | done    | `phase7/step2-html`       |
-| 3    | Ingest + api: `POST /api/cairns/:id/sources` with JSON `{ url }`; worker fetches, stores the snapshot, extracts; refresh   | planned | `phase7/step3-ingest-api` |
+| 3    | Ingest + api: `POST /api/cairns/:id/sources` with JSON `{ url }`; worker fetches, stores the snapshot, extracts; refresh   | done    | `phase7/step3-ingest-api` |
 | 4    | Web: "Add link" next to attach (one URL per line); link rows in the file list; cited passages link to the page; eval pages | planned | `phase7/step4-web-eval`   |
 
 Plan (agreed 2026-10-21):
@@ -388,10 +388,23 @@ Step 1 as built:
 Step 2 as built:
 
 - Kind `web` and `sources.url` (nullable) in migration `0010_web_kind` (core schema + shared `SourceKind`; web label `WEB`). Run `pnpm db:migrate` on the dev database.
-- core `src/ingest/html.ts` `readHtml(data, contentType)` → `{ title, segments }`: `decodeHtml` (charset from the Content-Type, else a `<meta charset>` in the first 1 KB, else UTF-8; unknown labels → UTF-8), jsdom with a silent `VirtualConsole` (closed after), Readability for the article; if it gives < 200 visible characters, the whole body minus nav/header/footer/aside/form is used when that has more. Turndown: ATX headings, no escapes (they'd be noise in chunks), scripts/styles/iframes/svg/buttons dropped, links → their text, images/media dropped, tables → `a | b` rows. Then `markdownSections` (heading paths). Nothing left → permanent "no readable text on the page (it may need JavaScript)". Title: Readability's, else `<title>`, whitespace collapsed, ≤ 200 chars (step 3 falls back to host + path).
+- core `src/ingest/html.ts` `readHtml(data, contentType)` → `{ title, segments }`: `decodeHtml` (charset from the Content-Type, else a `<meta charset>` in the first 1 KB, else UTF-8; unknown labels → UTF-8), jsdom with a silent `VirtualConsole` (closed after), Readability for the article (superseded in step 3: marked main content first); if it gives < 200 visible characters, the whole body minus nav/header/footer/aside/form is used when that has more. Turndown: ATX headings, no escapes (they'd be noise in chunks), scripts/styles/iframes/svg/buttons dropped, links → their text, images/media dropped, tables → `a | b` rows. Then `markdownSections` (heading paths). Nothing left → permanent "no readable text on the page (it may need JavaScript)". Title: Readability's, else `<title>`, whitespace collapsed, ≤ 200 chars (step 3 falls back to host + path).
 - `extract('web', data, { contentType })`; `IngestService` passes `source.mime` as the content type, so web sources must store the Content-Type as sent (step 3).
 - linkedom was tried first and dropped: it isn't an HTML5 parser (`<p>Hi</p>` without `<html>`/`<body>` came out as `<p><head></head><body></body>Hi</p>`, and a page without `<html>` lost its body). domino parses correctly but Readability fails on it (`NodeList` not iterable). jsdom `^30.1.3` needs Node `^22.22.2`.
 - Tests: article vs nav/footer, heading paths, table rows, scripts/styles/links/images gone, no escapes, short-page fallback, JavaScript-only page fails, charsets (header, meta, fallback), and ingest end to end with a windows-1252 page.
+
+Step 3 as built:
+
+- api `POST /api/cairns/:id/sources` takes JSON `{ url }` (shared `AddUrlRequest`) as well as a multipart file. The URL goes through `checkWebUrl` (errors → 400 with its message), loses its `#fragment` and is stored normalised (`HTTPS://Example.com:443/a#x` → `https://example.com/a`). The source starts as kind `web`, `filename` = the URL, mime `text/html`, size 0; 202. Same URL in the same cairn → 409 `DuplicateUrlResponse` (`error` + the existing `source`), backed by the unique index `sources_cairn_url_key` (migration `0011`). Owners and editors only.
+- api `POST /api/cairns/:id/sources/:sourceId/refresh` (owner/editor; 400 for uploads; 409 while pending/processing): `SourceService.requeue` (ready|failed web source → pending), then `ingest.remove(id)` before `enqueue`: jobs are keyed by source id and the finished job is kept, so a plain enqueue would do nothing. The job runs as the caller. Old chunks stay searchable until the new fetch completes (`complete` replaces them).
+- core `IngestService` deps gain `fetchPage(url)`; the worker passes `fetchUrl` with `UPLOAD_MAX_MEGA_BYTES` (worker config reads it too, default 25). For a source with a `url`: fetch → `detectFetchedKind` (HTML/XHTML → `web` with the Content-Type kept as mime for the charset; otherwise `detectKind` with an extension from the Content-Type, else the URL's file name; signatures win, so a PDF served as octet-stream is a PDF) → snapshot to Garage under the usual key → `recordFetch` (kind, mime, size, `filename` = `<title>`, else og:title, else host + path) → extract. The record happens before a read error is thrown, so a failed page still shows what it served. Unreadable types → "the URL serves a file Cairn can't read (audio/mpeg)".
+- `detectKind` and `cleanFilename` moved from api `upload.ts` to core `src/ingest/detect.ts` (the api re-exports them).
+- `SourceDto.url` (shared `Source.url`, nullable).
+- **Readability changed (live check on real sites):** on Wikipedia it dropped the h2 section headings (so "Today", "Concerns" were filed under the last subsection) and on index pages kept one story. `readHtml` now takes the page's lone `<article>`, else `<main>`/`[role=main]`, minus chrome (nav, header, footer, aside, form, navigation/complementary/search roles, hidden), when that has ≥ 200 visible characters; Readability only when the page marks no main content; the whole body last. `<main>` kept every heading for 5–20% more text; the lone-article rule keeps GitHub to the README. Title is now `<title>` (else og:title), not Readability's.
+- Turndown: bare `<pre>` (no `<code>` child) is fenced (a `# comment` in Python docs became a heading), with a fence longer than any backtick run inside; permalink anchors (¶ # § 🔗) dropped.
+- Checked live: Wikipedia "Cairn" (19 sections, all headings), MDN, Python tutorial, GitHub README, Node.js about, react.dev, Cloudflare blog index, gov.uk; 169.254.169.254 and localhost refused.
+- DESIGN.md Security: the worker now has outbound HTTP, only through `fetchUrl`.
+- Run `pnpm db:migrate` on the dev database (`0010`, `0011`).
 
 ## Phase 8: quiz (built before Phase 7)
 
@@ -498,4 +511,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 7 step 3 (ingest + api for URLs); later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 7 step 4 (web: Add link, link rows, Refresh, cited links; eval pages); later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

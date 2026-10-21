@@ -1,7 +1,5 @@
-import { basename } from 'node:path';
 import busboy from 'busboy';
 import type { Request } from 'express';
-import type { SourceKind } from '@cairn/shared';
 import { HttpError } from './errors';
 
 export interface Upload {
@@ -60,52 +58,5 @@ export function readUpload(req: Request, maxBytes: number): Promise<Upload> {
   });
 }
 
-// eslint-disable-next-line no-control-regex
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
-
-/** A display-safe file name: no directories or control characters, bounded length. */
-export function cleanFilename(name: string): string {
-  const base = basename(name.replaceAll('\\', '/')).replace(CONTROL_CHARS, '').trim();
-  return base.slice(0, 200) || 'upload';
-}
-
-const MARKDOWN_EXTENSIONS = /\.(md|markdown)$/i;
-const CSV_EXTENSIONS = /\.(csv|tsv)$/i;
-const JSON_EXTENSIONS = /\.(json|jsonl|ndjson)$/i;
-
-// Image signatures; the extension doesn't matter.
-const startsWith = (data: Buffer, bytes: number[], at = 0) =>
-  data.length >= at + bytes.length && bytes.every((b, i) => data[at + i] === b);
-const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
-
-function imageMime(data: Buffer): string | undefined {
-  if (startsWith(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
-  if (startsWith(data, [0xff, 0xd8, 0xff])) return 'image/jpeg';
-  if (startsWith(data, ascii('RIFF')) && startsWith(data, ascii('WEBP'), 8)) return 'image/webp';
-  return undefined;
-}
-
-/**
- * Decides the kind from the bytes, not the client's Content-Type: a PDF or image (PNG, JPEG, WebP)
- * signature, or valid UTF-8 text (Markdown, CSV or JSON by extension). Anything else, including
- * binary formats renamed to .txt, is unsupported.
- */
-export function detectKind(
-  filename: string,
-  data: Buffer,
-): { kind: SourceKind; mime: string } | undefined {
-  // PDF readers accept the header anywhere in the first 1 KB.
-  if (data.subarray(0, 1024).includes('%PDF-')) return { kind: 'pdf', mime: 'application/pdf' };
-  const image = imageMime(data);
-  if (image) return { kind: 'image', mime: image };
-  if (data.includes(0)) return undefined;
-  try {
-    new TextDecoder('utf-8', { fatal: true }).decode(data);
-  } catch {
-    return undefined;
-  }
-  if (MARKDOWN_EXTENSIONS.test(filename)) return { kind: 'markdown', mime: 'text/markdown' };
-  if (CSV_EXTENSIONS.test(filename)) return { kind: 'csv', mime: 'text/csv' };
-  if (JSON_EXTENSIONS.test(filename)) return { kind: 'json', mime: 'application/json' };
-  return { kind: 'text', mime: 'text/plain' };
-}
+// Shared with the worker, which detects the kind of fetched URLs the same way.
+export { cleanFilename, detectKind } from '@cairn/core';

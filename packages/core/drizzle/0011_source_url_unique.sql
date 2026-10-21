@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "sources_cairn_url_key" ON "sources" USING btree ("cairn_id","url");

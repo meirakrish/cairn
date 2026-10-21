@@ -7,6 +7,7 @@ import { EMBEDDING_DIMENSIONS, type SourceKind } from '../db';
 import { SourceService } from '../sources';
 import { MemoryObjectStore } from '../storage';
 import { createTestDbs, createUser, makePdf, resetDb } from '../testing';
+import type { FetchedPage } from '../web';
 import { PermanentIngestError } from './errors';
 import { PAGE_PROMPT } from './image';
 import { IngestService } from './service';
@@ -24,7 +25,11 @@ afterAll(async () => {
   await app.close();
 });
 
-function setup(embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS }), vision?: LlmClient) {
+function setup(
+  embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS }),
+  vision?: LlmClient,
+  fetchPage?: (url: string) => Promise<FetchedPage>,
+) {
   const cairns = new CairnService(app.db, embedder.model);
   const ingest = new IngestService({
     cairns,
@@ -32,6 +37,7 @@ function setup(embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS }), vi
     storage,
     embedder,
     vision,
+    fetchPage,
     chunking: { maxChars: 200, overlapChars: 40 },
   });
   return { cairns, ingest, embedder };
@@ -248,5 +254,158 @@ describe('IngestService', () => {
     const err = await ingest.process(user.id, source.id).catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(PermanentIngestError);
     expect((await sources.get(user.id, source.id))?.status).toBe('processing');
+  });
+
+  describe('web sources', () => {
+    /** A fake site: URL → page, recording what was fetched. */
+    function site(pages: Record<string, Omit<FetchedPage, 'url'> | Error>) {
+      const fetched: string[] = [];
+      const fetchPage = async (url: string) => {
+        fetched.push(url);
+        const page = pages[url];
+        if (!page) throw new PermanentIngestError('the site answered 404');
+        if (page instanceof Error) throw page;
+        return { url, ...page };
+      };
+      return { fetched, fetchPage };
+    }
+
+    async function added(cairns: CairnService, url: string) {
+      const user = await createUser(admin.db);
+      const cairn = await cairns.create(user.id, { name: 'C' });
+      const source = await sources.create(user.id, cairn.id, {
+        kind: 'web',
+        filename: url,
+        mime: 'text/html',
+        size: 0,
+        url,
+      });
+      return { user, source };
+    }
+
+    const html = (title: string, body: string) =>
+      utf8(
+        `<html><head><title>${title}</title></head><body><h2>Hours</h2><p>${body}</p></body></html>`,
+      );
+
+    it('fetches the page, keeps a snapshot, and names the source after its title', async () => {
+      const page = html('Hut info', 'The hut opens at 9.');
+      const { fetchPage, fetched } = site({
+        'https://example.com/hut': { contentType: 'text/html; charset=utf-8', data: page },
+      });
+      const { cairns, ingest } = setup(undefined, undefined, fetchPage);
+      const { user, source } = await added(cairns, 'https://example.com/hut');
+
+      expect(await ingest.process(user.id, source.id)).toEqual({ status: 'ready', chunks: 1 });
+      expect(fetched).toEqual(['https://example.com/hut']);
+      expect(await sources.get(user.id, source.id)).toMatchObject({
+        kind: 'web',
+        filename: 'Hut info',
+        mime: 'text/html; charset=utf-8',
+        size: page.length,
+        url: 'https://example.com/hut',
+        status: 'ready',
+      });
+      expect(storage.objects.get(source.storageKey)?.body).toEqual(page);
+      expect((await sources.listChunks(user.id, source.id)).map((c) => c.location)).toEqual([
+        { headings: ['Hours'] },
+      ]);
+    });
+
+    it('reads a URL that serves another kind of file like an upload', async () => {
+      const { fetchPage } = site({
+        'https://example.com/files/minutes.pdf': {
+          contentType: 'application/octet-stream',
+          data: makePdf(['Minutes of the meeting']),
+        },
+        'https://example.com/api/trails': {
+          contentType: 'application/json; charset=utf-8',
+          data: utf8('{"trails":[{"id":1,"name":"Ridge"},{"id":2,"name":"Lake"}]}'),
+        },
+      });
+      const { cairns, ingest } = setup(undefined, undefined, fetchPage);
+
+      const pdf = await added(cairns, 'https://example.com/files/minutes.pdf');
+      await ingest.process(pdf.user.id, pdf.source.id);
+      expect(await sources.get(pdf.user.id, pdf.source.id)).toMatchObject({
+        kind: 'pdf',
+        mime: 'application/pdf',
+        filename: 'example.com/files/minutes.pdf',
+        status: 'ready',
+      });
+
+      const json = await added(cairns, 'https://example.com/api/trails');
+      await ingest.process(json.user.id, json.source.id);
+      expect(await sources.get(json.user.id, json.source.id)).toMatchObject({ kind: 'json' });
+    });
+
+    it('fails permanently for unreadable types and pages without text, keeping what was fetched', async () => {
+      const { fetchPage } = site({
+        'https://example.com/app': {
+          contentType: 'text/html',
+          data: utf8('<title>App</title><div id="root"></div><script src="a.js"></script>'),
+        },
+        'https://example.com/song.mp3': { contentType: 'audio/mpeg', data: new Uint8Array([0, 1]) },
+      });
+      const { cairns, ingest } = setup(undefined, undefined, fetchPage);
+
+      const app_ = await added(cairns, 'https://example.com/app');
+      await expect(ingest.process(app_.user.id, app_.source.id)).rejects.toThrow(
+        /may need JavaScript/,
+      );
+      expect(await sources.get(app_.user.id, app_.source.id)).toMatchObject({
+        filename: 'example.com/app',
+        size: expect.any(Number) as number,
+      });
+
+      const song = await added(cairns, 'https://example.com/song.mp3');
+      const err = await ingest.process(song.user.id, song.source.id).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(PermanentIngestError);
+      expect((err as Error).message).toBe("the URL serves a file Cairn can't read (audio/mpeg)");
+    });
+
+    it('lets fetch errors through: permanent ones fail, others are retried', async () => {
+      const { fetchPage } = site({
+        'https://example.com/busy': new Error('the site answered 503'),
+      });
+      const { cairns, ingest } = setup(undefined, undefined, fetchPage);
+      const busy = await added(cairns, 'https://example.com/busy');
+      const err = await ingest.process(busy.user.id, busy.source.id).catch((e: unknown) => e);
+      expect(err).not.toBeInstanceOf(PermanentIngestError);
+      const gone = await added(cairns, 'https://example.com/gone');
+      await expect(ingest.process(gone.user.id, gone.source.id)).rejects.toThrow(
+        PermanentIngestError,
+      );
+    });
+
+    it('fails permanently without a fetcher', async () => {
+      const { cairns, ingest } = setup();
+      const { user, source } = await added(cairns, 'https://example.com/');
+      await expect(ingest.process(user.id, source.id)).rejects.toThrow(/cannot fetch web pages/);
+    });
+
+    it('replaces the chunks and name when a refreshed page is fetched again', async () => {
+      const pages = {
+        'https://example.com/hut': { contentType: 'text/html', data: html('Hut', 'Opens at 9.') },
+      };
+      const { fetchPage } = site(pages);
+      const { cairns, ingest } = setup(undefined, undefined, fetchPage);
+      const { user, source } = await added(cairns, 'https://example.com/hut');
+      await ingest.process(user.id, source.id);
+
+      // Ready sources are skipped until refreshed; uploads can't be refreshed.
+      pages['https://example.com/hut'].data = html('Hut (winter)', 'Opens at 10.');
+      expect((await ingest.process(user.id, source.id)).status).toBe('skipped');
+      expect((await sources.requeue(user.id, source.id))?.status).toBe('pending');
+      await ingest.process(user.id, source.id);
+
+      expect((await sources.get(user.id, source.id))?.filename).toBe('Hut (winter)');
+      const chunks = await sources.listChunks(user.id, source.id);
+      expect(chunks.map((c) => c.content)).toEqual(['## Hours\n\nOpens at 10.']);
+
+      const file = await uploaded(cairns, 'text', utf8('hello'));
+      await ingest.process(file.user.id, file.source.id);
+      expect(await sources.requeue(file.user.id, file.source.id)).toBeUndefined();
+    });
   });
 });

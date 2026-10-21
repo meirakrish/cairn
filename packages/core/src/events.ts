@@ -8,9 +8,9 @@ export function cairnEventsChannel(cairnId: string): string {
 }
 
 export function sourceDto(s: Source): SourceDto {
-  const { id, cairnId, kind, filename, mime, size, status, error } = s;
+  const { id, cairnId, kind, filename, mime, size, status, error, url } = s;
   return {
-    ...{ id, cairnId, kind, filename, mime, size, status, error },
+    ...{ id, cairnId, kind, filename, mime, size, status, error, url },
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   };

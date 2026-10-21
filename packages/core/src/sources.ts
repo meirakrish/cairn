@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
   cairns,
   chunks,
@@ -14,6 +14,16 @@ import { NotFoundError } from './errors';
 import type { SourceChange, SourceChangeListener } from './events';
 
 export interface CreateSourceInput {
+  kind: SourceKind;
+  filename: string;
+  mime: string;
+  size: number;
+  /** For web sources: the page to fetch (normalised by checkWebUrl). */
+  url?: string;
+}
+
+/** What the worker learns from fetching a web source. */
+export interface FetchedSourceInput {
   kind: SourceKind;
   filename: string;
   mime: string;
@@ -93,6 +103,56 @@ export class SourceService {
       const [source] = await tx.select().from(sources).where(eq(sources.id, sourceId));
       return source;
     });
+  }
+
+  /** The source fetched from this URL in the cairn, if any. */
+  async findByUrl(userId: string, cairnId: string, url: string): Promise<Source | undefined> {
+    return withUser(this.db, userId, async (tx) => {
+      const [source] = await tx
+        .select()
+        .from(sources)
+        .where(and(eq(sources.cairnId, cairnId), eq(sources.url, url)));
+      return source;
+    });
+  }
+
+  /** Records the kind, name, type and size of a fetched page (they change on every refresh). */
+  async recordFetch(
+    userId: string,
+    sourceId: string,
+    input: FetchedSourceInput,
+  ): Promise<Source | undefined> {
+    const source = await withUser(this.db, userId, async (tx) => {
+      const [source] = await tx
+        .update(sources)
+        .set({ ...input, updatedAt: sql`now()` })
+        .where(eq(sources.id, sourceId))
+        .returning();
+      return source;
+    });
+    return this.changed(source);
+  }
+
+  /**
+   * Sets a web source back to pending so it is fetched again. Returns undefined unless it is a web
+   * source that is ready or failed (one being fetched already has nothing to gain).
+   */
+  async requeue(userId: string, sourceId: string): Promise<Source | undefined> {
+    const source = await withUser(this.db, userId, async (tx) => {
+      const [source] = await tx
+        .update(sources)
+        .set({ status: 'pending', error: null, updatedAt: sql`now()` })
+        .where(
+          and(
+            eq(sources.id, sourceId),
+            isNotNull(sources.url),
+            inArray(sources.status, ['ready', 'failed']),
+          ),
+        )
+        .returning();
+      return source;
+    });
+    return this.changed(source);
   }
 
   /** Deletes the source and its chunks; returns the row so the caller can delete the stored file. */
