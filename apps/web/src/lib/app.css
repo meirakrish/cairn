@@ -488,14 +488,22 @@ a {
 .cairn-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.75rem 0.5rem;
   margin-bottom: 1.5rem;
 }
 
 .cairn-header .title {
-  flex: 1 1 16rem;
+  flex: 1 0 100%;
   min-width: 0;
+}
+
+/* Second row: the Ask / Test me switch on the left, the buttons pushed right at its height. */
+.cairn-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .cairn-header h1 {
@@ -906,11 +914,6 @@ button.cite.active {
 .cited .link {
   color: inherit;
   text-align: left;
-}
-
-/* A full column-width row, so the switch lines up with the title and the question box. */
-.mode-row {
-  margin-bottom: 0.75rem;
 }
 
 .mode-switch {

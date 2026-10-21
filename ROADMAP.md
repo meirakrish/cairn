@@ -488,7 +488,7 @@ Branch `phase11/cairn-header-actions` (from `phase10/sources-panel`). Asked for 
 
 As built: `CairnDialog` is back to create/edit only; the trash (red, right-hand group, `.icon-button.destructive`) opens `DeleteCairnDialog` (a modal like the edit one: name, warning, Cancel / Delete cairn, inline error; Escape and backdrop are ignored while deleting). Not checked in a browser.
 
-Layout fix (2026-10-21, from a screenshot): the Ask / Test me switch sat at the panel's left edge, outside the 48rem column (an inline-flex element ignores `margin-inline: auto`); it now sits in a `.mode-row` that lines up with the title and the question box. Header spacing 1rem → 1.5rem.
+Layout fix (2026-10-21, from a screenshot): the Ask / Test me switch sat at the panel's left edge, outside the 48rem column (an inline-flex element ignores `margin-inline: auto`); it now lines up with the title and the question box. Then moved into the header: title on the first row; the switch on the left and the buttons (`.cairn-actions`, pushed right) on the second row, at the same height. Header spacing 1rem → 1.5rem.
 
 ## Current layout
 
