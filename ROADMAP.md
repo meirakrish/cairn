@@ -546,6 +546,27 @@ As built:
 - PDFs (step 4): pdf.js reverses the letters inside each text item (so visual-order PDFs from older tools come out right), but items come left to right on the page, so a Hebrew line with English or numbers read its runs backwards, brackets came out swapped, and Chrome's pointed text (a glyph per item) was garbage. `pageText(items, pageWidth)` keeps left-to-right lines exactly as before (items joined, `\n` per `hasEOL`) and passes right-to-left lines to `rtlLine`: items sorted by x and read right to left; a Latin run (with numbers after it and punctuation between) stays left to right; leading/trailing punctuation of a Latin or number run moves to its reading side; lone brackets are mirrored; mark-only items attach to the Hebrew item whose middle is nearest; a gap > 0.3 × font size without a space becomes a space (table cells); whitespace items < 0.5pt wide are dropped (pdf.js filler). Line direction: both ends Hebrew → RTL, both ends Latin → LTR; mixed ends → the side with the smaller margin (> 5% of the page width apart), else the page's majority. The `hasEOL` item is empty and sits where the _next_ line starts, so empty items are skipped. Tested on two PDFs Chrome printed from Hebrew HTML (items copied into `pdf-text.test.ts`, files not committed) and on a visual-order PDF from `makePdf`'s new `RunsPage` (glyph-name font, `afii57664`–`afii57690`). Known gap: a list number loses its space ("1.הפריט"), and Word-made PDFs weren't tried (Word isn't installed here).
 - Not done: Hebrew stopwords (מה, של, את…); vector search and the D weight cover most of it. Not yet checked in a browser or with a Hebrew eval set. Dev DB needs `pnpm db:migrate` for 0013 (rewrites every chunk's `tsv`).
 
+## Phase 14: table queries over CSV/JSON (planned)
+
+Branch `phase14/table-queries` (from `main`). Asked for on 2026-10-21. Today a CSV/JSON row is only a line in a chunk, so "how many", "average", "top 5" questions see just the few chunks retrieval returns. This phase keeps the rows and answers such questions from all of them.
+
+Design: the model never writes SQL. It writes a small JSON **query plan** (filters, group by, aggregates, order, limit) that core validates against the file's columns and compiles to parameterized SQL. Safe by construction; no sandbox needed.
+
+| Step | What                                                                                                                                                                      | Status  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1    | Storage: `source_rows` (cairn_id, source_id, row, data jsonb; RLS like chunks) + `sources.columns` (name, type: number / date / text, inferred at ingest); migration 0014 | planned |
+| 2    | Ingest: CSV and JSON/JSONL (flat records) also write rows and column types; chunks stay (lookups, keyword search); nested JSON keeps only its chunks                      | planned |
+| 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | planned |
+| 4    | core `TableQueryService`: router prompt (question + cairn's table schemas → plan or "passages"), run, then answer from the result; fall back to passages on a bad plan     | planned |
+| 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | planned |
+| 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | planned |
+
+Open questions:
+
+- Router: decided — runs only for cairns that have a table source, so other cairns get no extra latency.
+- Decided: v1 queries one file at a time (no joins across files) and flat JSON only (no nested records). Dates in mixed formats are also out of scope.
+- Sealed callers: aggregates are not "copying" a source, but the VerbatimFilter must still run over the result rows.
+
 ## Current layout
 
 ```
@@ -614,4 +635,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 13 (Hebrew) is on `phase13/hebrew`; check RTL in a browser with Hebrew files and questions; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 14 (table queries) is planned on `phase14/table-queries`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
