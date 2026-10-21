@@ -17,6 +17,7 @@
     "@cairn/shared": "workspace:*",
     "@langchain/core": "^1.2.18",
     "@meirakrish/llm-kit": "^0.3.0",
+    "@napi-rs/canvas": "^1.0.11",
     "bullmq": "~6.3.17",
     "drizzle-orm": "^0.45.4",
     "ioredis": "^6.0.0",

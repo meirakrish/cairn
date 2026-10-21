@@ -7,14 +7,14 @@ import type { ObjectStore } from '../storage';
 import { chunkSegments, DEFAULT_CHUNKING, type ChunkOptions } from './chunk';
 import { PermanentIngestError } from './errors';
 import { extract, type Segment } from './extract';
-import { describeImage } from './image';
+import { describeImage, transcribePage } from './image';
 
 export interface IngestDeps {
   cairns: CairnService;
   sources: SourceService;
   storage: ObjectStore;
   embedder: Embedder;
-  /** Reads images (transcription + description); without it, image sources fail. */
+  /** Reads images and scanned PDF pages; without it, images fail and scanned pages are skipped. */
   vision?: LlmClient;
   chunking?: ChunkOptions;
 }
@@ -58,7 +58,10 @@ export class IngestService {
     const segments =
       source.kind === 'image'
         ? await this.readImage(data)
-        : await extract(source.kind, data, chunking.maxChars);
+        : await extract(source.kind, data, {
+            maxChars: chunking.maxChars,
+            readScannedPage: this.deps.vision && ((png) => transcribePage(this.deps.vision!, png)),
+          });
     const chunks = chunkSegments(segments, chunking);
     if (chunks.length === 0) throw new PermanentIngestError('no text found in the file');
 

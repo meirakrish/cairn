@@ -107,12 +107,12 @@ The worker embeds chunks with Ollama on the Windows host, through [llm-kit](http
 Uploads are processed by `apps/worker`:
 
 1. The api stores the file and queues a BullMQ job `{ sourceId, userId }`.
-2. The worker runs it as the uploader (RLS applies): extract text (text, Markdown by heading, PDF by page, CSV as `column: value` rows grouped into whole-row chunks, JSON as one record per object in each list, `path: key: value; …`, JSON Lines one record per line; images (PNG, JPEG, WebP) are shrunk to 1568 px and transcribed and described by the chat model's vision, `LLM_MODEL`), split into ~600-token chunks (2400 characters, ~360 overlapping, cut at paragraph, sentence or word boundaries), embed, and store, setting the source `ready`.
+2. The worker runs it as the uploader (RLS applies): extract text (text, Markdown by heading, PDF by page with scanned pages transcribed by the vision model, CSV as `column: value` rows grouped into whole-row chunks, JSON as one record per object in each list, `path: key: value; …`, JSON Lines one record per line; images (PNG, JPEG, WebP) are shrunk to 1568 px and transcribed and described by the chat model's vision, `LLM_MODEL`), split into ~600-token chunks (2400 characters, ~360 overlapping, cut at paragraph, sentence or word boundaries), embed, and store, setting the source `ready`.
 3. A problem with the file (no text, damaged PDF, too much text) fails the source at once with a message for the user. Other errors (Ollama down, ...) are retried 3 times with backoff before the source is marked `failed`.
 
 Status changes reach the browser live: `SourceService` reports every committed change, the api and the worker publish it on the Redis channel `cairn:<id>:events`, and `GET /api/cairns/:id/events` streams it (SSE). The stream opens with a snapshot of the cairn's sources (taken after subscribing, so nothing is lost in between) and re-checks the session and the cairn every 25 s, ending when either is gone. A user may hold 3 streams at once (`SSE_MAX_STREAMS_PER_USER`); a fourth gets 429 until a tab closes. Slots are Redis leases renewed on each heartbeat, so a crashed api can't hold them.
 
-Limits: 2,000 PDF pages, 2M characters, 60 s to read a PDF. Scanned PDFs (no text layer) are not supported yet.
+Limits: 2,000 PDF pages, 2M characters, 60 s to read a PDF's text. PDF pages with fewer than 50 visible characters count as scanned: they are rendered (1568 px) and transcribed by the vision model, at most 100 per file (several seconds each).
 
 ## Database roles
 

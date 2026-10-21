@@ -84,7 +84,7 @@ describe('jsonSegments', () => {
 describe('extract (json)', () => {
   it('decodes and packs a document', async () => {
     const data = new TextEncoder().encode('{"name":"Cairn","tags":["a","b"]}');
-    expect(await extract('json', data, 2400)).toEqual([
+    expect(await extract('json', data, { maxChars: 2400 })).toEqual([
       { text: '$: name: Cairn; tags[0]: a; tags[1]: b', location: { path: '$' } },
     ]);
   });
