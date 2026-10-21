@@ -178,13 +178,13 @@ Plan decisions (agreed 2026-10-20):
 
 ## Phase 4: sharing (in progress)
 
-| Step | What                                                                                                                                                            | Status | Branch                |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------- |
-| 1    | Schema + RLS: `shares`, `share_redemptions`, `query_log.share_id`; `cairn_access()` / `redeem_share_link()`; per-role policies; RLS tests                       | done   | `phase4/step1-shares` |
-| 2    | core `ShareService` + access policy: `access(userId, cairnId)` → role/visibility/shareId; create/list/revoke; link tokens (32 random bytes, hashed)             | next   |                       |
-| 3    | api: `/api/cairns/:id/shares` (owner), `POST /api/share-links/:token/redeem`, cairn list with role + mode, sealed → 403 on sources/events, per-share rate limit | todo   |                       |
-| 4    | Sealed answers: no source details in the prompt, citation-free event types, synthesize-don't-quote prompt, verbatim 12-word overlap → "…"                       | todo   |                       |
-| 5    | Web: Share dialog (email, link, role, mode, revoke, copy), `/s/:token` sign-in + redeem, shared badge, sealed view (Ask only, "sources are not shown")          | todo   |                       |
+| Step | What                                                                                                                                                            | Status | Branch                       |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------- |
+| 1    | Schema + RLS: `shares`, `share_redemptions`, `query_log.share_id`; `cairn_access()` / `redeem_share_link()`; per-role policies; RLS tests                       | done   | `phase4/step1-shares`        |
+| 2    | core `ShareService` + access policy: `access(userId, cairnId)` → role/visibility/shareId; create/list/revoke; link tokens (32 random bytes, hashed)             | done   | `phase4/step2-share-service` |
+| 3    | api: `/api/cairns/:id/shares` (owner), `POST /api/share-links/:token/redeem`, cairn list with role + mode, sealed → 403 on sources/events, per-share rate limit | next   |                              |
+| 4    | Sealed answers: no source details in the prompt, citation-free event types, synthesize-don't-quote prompt, verbatim 12-word overlap → "…"                       | todo   |                              |
+| 5    | Web: Share dialog (email, link, role, mode, revoke, copy), `/s/:token` sign-in + redeem, shared badge, sealed view (Ask only, "sources are not shown")          | todo   |                              |
 
 Plan decisions (agreed 2026-10-21):
 
@@ -201,6 +201,12 @@ Step 1 as built:
 - `cairn_access(cairn_id)` → one row (role, visibility, share_id) or none: owner first, else the best active share (editor > viewer, cited > sealed, oldest). Both functions are `security definer` (owned by the migration role) and hand-written in `0003_shares.sql`, so `cairns` and `shares` policies don't recurse through each other.
 - Policies: cairns read = owner or `cairn_access`; cairn writes owner-only. sources/chunks read = cairn visible (sealed callers included: retrieval needs chunks; services hide them); insert/update = owner or editor (the worker runs as the uploader); delete sources = owner, delete chunks = owner or editor (reprocessing). query_log: insert own rows on a visible cairn; read own rows, owner reads all. shares: owner only.
 - `src/db/shares-rls.test.ts` (18 tests). Checked they bite: dropping `revoked_at IS NULL` from `cairn_access` fails 3.
+
+Step 2 as built:
+
+- core `src/shares.ts`: `ShareService` with `access(userId, cairnId)` → `CairnAccess { role, visibility, shareId }` | undefined, `shareWithEmail` (trim + lowercase, rejects non-emails, your own email, duplicates → `ConflictError` via the unique index), `createLink` → `{ share, token }` (32 random bytes, base64url, 43 chars; only `hashShareToken()` sha256 hex stored), `list` (live shares incl. expired, oldest first, link redeemers with email/name), `revoke` (scoped to the cairn; twice → `NotFoundError`), `redeem(userId, token)` → cairn id | undefined (malformed tokens never reach the DB). `cairnAccess(tx, cairnId)` for use inside other services' transactions.
+- Owner-only methods: no access → `NotFoundError('cairn')`, a grantee → `ForbiddenError`. Sealed editors and past expiries → `InvalidInputError`. New errors in `src/errors.ts`; the api maps them in step 3 (403/409/400).
+- 13 tests in `src/shares.test.ts`.
 
 ## Current layout
 
@@ -268,4 +274,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 4 step 2 (`ShareService`).** Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 4 step 3 (api).** Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
