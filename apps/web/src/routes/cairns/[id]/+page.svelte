@@ -137,6 +137,15 @@
     }
   }
 
+  const KIND_LABEL: Record<Source['kind'], string> = {
+    text: 'TXT',
+    markdown: 'MD',
+    pdf: 'PDF',
+    csv: 'CSV',
+    json: 'JSON',
+    image: 'IMG',
+  };
+
   const STATUS_LABEL: Record<Source['status'], string> = {
     pending: 'Queued',
     processing: 'Processing…',
@@ -241,8 +250,7 @@
       {#each sources as source (source.id)}
         <li>
           <div class="row">
-            <span class="kind">{source.kind === 'markdown' ? 'MD' : source.kind.toUpperCase()}</span
-            >
+            <span class="kind">{KIND_LABEL[source.kind]}</span>
             <span class="name" title={source.filename}>{source.filename}</span>
             <span class="status {source.status}">{STATUS_LABEL[source.status]}</span>
             {#if !isOwner}

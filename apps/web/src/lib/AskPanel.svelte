@@ -153,6 +153,15 @@
             {/if}
             <button type="button" class="link" onclick={() => (open = null)}>Close</button>
           </header>
+          {#if openPassage.kind === 'image'}
+            <!-- Cited answers only: sealed answers have no passages, and the api refuses them files. -->
+            <img
+              class="preview"
+              src="/api/cairns/{cairnId}/sources/{openPassage.sourceId}/file"
+              alt="The image this passage describes: {openPassage.filename}"
+              loading="lazy"
+            />
+          {/if}
           <p>{openPassage.text}</p>
         </blockquote>
       {/if}

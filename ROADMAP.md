@@ -236,7 +236,7 @@ Step 5 as built:
 - `askQuestion(cairnId, question, sealed, …)` parses `SealedAnswerEvent` for sealed cairns; AskPanel enables asking for sealed callers without a ready-files count (they can't see files).
 - Merged (PRs #18–#22) on 2026-10-21.
 
-## Phase 5: more file types (in progress)
+## Phase 5: more file types (done once step 6 is merged)
 
 | Step | What                                                                                                           | Status | Branch                     |
 | ---- | -------------------------------------------------------------------------------------------------------------- | ------ | -------------------------- |
@@ -245,7 +245,7 @@ Step 5 as built:
 | 3    | JSON / JSONL ingest: records as `path: value` lines, location = JSON path                                      | done   | `phase5/step3-json`        |
 | 4    | Images (PNG, JPEG, WebP): resize, transcribe + describe with `qwen3.5:9b` vision, then chunk and embed         | done   | `phase5/step4-images`      |
 | 5    | Scanned PDFs: render pages without a text layer and transcribe them with the vision model                      | done   | `phase5/step5-scanned-pdf` |
-| 6    | Web (new kinds, locations; no image previews for sealed callers) and eval questions for each new type          | next   |                            |
+| 6    | Web (new kinds, locations; no image previews for sealed callers) and eval questions for each new type          | done   | `phase5/step6-web-eval`    |
 
 Plan decisions (agreed 2026-10-21):
 
@@ -294,6 +294,23 @@ Step 5 as built:
 - `makePdf` (core testing) accepts image pages `{ jpeg, width, height }` (DCTDecode XObject filling the page), building the file as bytes.
 - Checked live: a PDF with a text page and a slightly rotated JPEG-70 scan of club minutes with a table and a signature: transcribed word for word (table as `|` rows), 7.2 s for the file; questions about the meeting place, the signage budget and the roster answered correctly with page citations.
 - Web dropzone note: "Images and scanned PDF pages are read by the AI model, which takes a few seconds per page."
+
+Step 6 as built:
+
+- api `GET /api/cairns/:id/sources/:sourceId/file`: the original of an **image** source (others 404; other kinds wait for `allow_download`), cited callers only (`requireCited` → 403 for sealed). Served inertly: stored mime, `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `inline; filename*=UTF-8''…`, `private, max-age=3600`.
+- Web: the passage popup shows the image for image passages (sealed answers have no passages at all); file list kind labels TXT / MD / PDF / CSV / JSON / IMG.
+- Eval: corpus adds `trails.csv`, `shop.json` (synthetic, committed), `trailhead.svg` → PNG and `minutes.svg` → rotated JPEG-70 scan → image-only PDF, rendered at run time with sharp (eval depends on sharp). Eval ingest now uses the vision model too (`LLM_*`). 8 new questions (2 per new type), 36 in all; a "by file type" table for the app's setting.
+- Baseline (2026-10-21, qwen3-embedding:0.6b, vision qwen3.5:9b):
+
+  | setting                      | R@1 | R@3 | R@8  | MRR  |
+  | ---------------------------- | --- | --- | ---- | ---- |
+  | hybrid (keyword ×0.3, app)   | 64% | 81% | 100% | 0.74 |
+  | hybrid, equal weights        | 61% | 81% | 97%  | 0.72 |
+  | vector                       | 72% | 83% | 97%  | 0.79 |
+  | keyword                      | 33% | 47% | 75%  | 0.46 |
+  | hybrid, no query instruction | 58% | 81% | 97%  | 0.71 |
+
+  New types under hybrid: CSV, image and scan 2/2 at rank 1; JSON `json-returns` at rank 4 (the shop's root fields share a chunk with the first orders). Vector alone now has the better MRR (0.79 vs 0.74) but misses one question in the top 8; worth a tuning pass (keyword weight, or a reranker) later.
 
 ## Current layout
 
@@ -363,4 +380,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 5 step 6 (web and eval).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: merge Phase 5 step 6; then plan the next phase (DESIGN.md "Next stage": API keys, MCP server).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

@@ -414,6 +414,15 @@ button.cite.active {
   margin-left: auto;
 }
 
+.passage .preview {
+  display: block;
+  max-width: 100%;
+  max-height: 20rem;
+  margin-top: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 .passage p {
   margin: 0.5rem 0 0;
   white-space: pre-wrap;

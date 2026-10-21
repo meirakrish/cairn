@@ -135,23 +135,24 @@ Google sign-in is handled entirely by the api (authorization code flow with PKCE
 
 All routes are under `/api` and return JSON. Errors are `{ "error": "..." }`; validation errors (400) also carry `issues`.
 
-| Route                                      | Auth | What it does                                                                                                              |
-| ------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`                          | no   | Liveness                                                                                                                  |
-| `GET /api/auth/me`                         | yes  | Current user                                                                                                              |
-| `POST /api/auth/logout`                    | yes  | End the session                                                                                                           |
-| `GET /api/cairns`                          | yes  | Your cairns and those shared with you, newest first, each with your `role` and `visibility`                               |
-| `POST /api/cairns`                         | yes  | Create a cairn: `{ name, description? }` → 201                                                                            |
-| `GET /api/cairns/:id`                      | yes  | One cairn                                                                                                                 |
-| `GET /api/cairns/:id/sources`              | yes  | The cairn's sources (files), newest first, with status                                                                    |
-| `POST /api/cairns/:id/sources`             | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async                                                |
-| `DELETE /api/cairns/:id/sources/:sourceId` | yes  | Delete a source, its chunks and its stored file → 204                                                                     |
-| `GET /api/cairns/:id/events`               | yes  | Live source updates (Server-Sent Events): a snapshot, then each change                                                    |
-| `POST /api/cairns/:id/query`               | yes  | Ask a question `{ question }` (≤ 1,000 chars, 20/min): the answer as SSE — passages, text pieces, then cited numbers      |
-| `GET /api/cairns/:id/shares`               | yes  | The cairn's live shares, with who opened each link (owner only)                                                           |
-| `POST /api/cairns/:id/shares`              | yes  | Share: `{ kind: 'email', email, role, visibility, expiresAt? }` or `{ kind: 'link', … }` → 201; links return `token` once |
-| `DELETE /api/cairns/:id/shares/:shareId`   | yes  | Revoke a share → 204 (owner only)                                                                                         |
-| `POST /api/share-links/:token/redeem`      | yes  | Open a share link → `{ cairnId }`; unknown, revoked or expired links are 404                                              |
+| Route                                        | Auth | What it does                                                                                                              |
+| -------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                            | no   | Liveness                                                                                                                  |
+| `GET /api/auth/me`                           | yes  | Current user                                                                                                              |
+| `POST /api/auth/logout`                      | yes  | End the session                                                                                                           |
+| `GET /api/cairns`                            | yes  | Your cairns and those shared with you, newest first, each with your `role` and `visibility`                               |
+| `POST /api/cairns`                           | yes  | Create a cairn: `{ name, description? }` → 201                                                                            |
+| `GET /api/cairns/:id`                        | yes  | One cairn                                                                                                                 |
+| `GET /api/cairns/:id/sources`                | yes  | The cairn's sources (files), newest first, with status                                                                    |
+| `POST /api/cairns/:id/sources`               | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async                                                |
+| `DELETE /api/cairns/:id/sources/:sourceId`   | yes  | Delete a source, its chunks and its stored file → 204                                                                     |
+| `GET /api/cairns/:id/sources/:sourceId/file` | yes  | The original of an image source, for previews (cited callers only; served with `nosniff` and a sandbox CSP)               |
+| `GET /api/cairns/:id/events`                 | yes  | Live source updates (Server-Sent Events): a snapshot, then each change                                                    |
+| `POST /api/cairns/:id/query`                 | yes  | Ask a question `{ question }` (≤ 1,000 chars, 20/min): the answer as SSE — passages, text pieces, then cited numbers      |
+| `GET /api/cairns/:id/shares`                 | yes  | The cairn's live shares, with who opened each link (owner only)                                                           |
+| `POST /api/cairns/:id/shares`                | yes  | Share: `{ kind: 'email', email, role, visibility, expiresAt? }` or `{ kind: 'link', … }` → 201; links return `token` once |
+| `DELETE /api/cairns/:id/shares/:shareId`     | yes  | Revoke a share → 204 (owner only)                                                                                         |
+| `POST /api/share-links/:token/redeem`        | yes  | Open a share link → `{ cairnId }`; unknown, revoked or expired links are 404                                              |
 
 Request and response shapes are the zod schemas in `packages/shared`. Unknown, malformed or other users' ids are all 404.
 
@@ -191,7 +192,7 @@ The api asks Ollama at startup whether the model can think, to turn thinking off
 
 ## Retrieval eval
 
-`pnpm eval` measures how well search finds the right passages. It ingests the fixed corpus in `packages/eval/corpus/` (the US Constitution as a PDF, Strunk's _The Elements of Style_, and frozen copies of DESIGN.md and llm-kit's README) into its own database `cairn_eval` with the real embedder, then asks the 28 questions in `packages/eval/questions.json` under several search settings.
+`pnpm eval` measures how well search finds the right passages. It ingests the fixed corpus in `packages/eval/corpus/` (the US Constitution as a PDF, Strunk's _The Elements of Style_, frozen copies of DESIGN.md and llm-kit's README, a CSV, a JSON file, an image and a scanned PDF) into its own database `cairn_eval` with the real embedder and the chat model's vision, then asks the 36 questions in `packages/eval/questions.json` under several search settings, with a summary per file type.
 
 A question counts as answered at rank r when a chunk at rank r of the expected source contains the expected phrase. The run prints recall@1/3/8 and MRR per setting (and per question style: direct, paraphrase, exact) plus each question's rank, and writes `packages/eval/results/latest.json` (gitignored). Recall@8 matters most, since the top 8 chunks are what the model reads.
 

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1224" height="1584">
+  <rect width="100%" height="100%" fill="#f3efe4"/>
+  <g font-family="serif" fill="#222" font-size="22">
+    <text x="80" y="140" font-size="40" font-weight="bold">Hollow Creek Trail Club</text>
+    <text x="80" y="190">Minutes of the committee meeting, 14 March 2026</text>
+    <text x="80" y="280">Present: R. Okafor (chair), M. Lindqvist, D. Haddad, S. Moreau.</text>
+    <text x="80" y="330">The committee agreed to rebuild the summit cairn on Raven Ridge before 1 June.</text>
+    <text x="80" y="370">The work party will meet at the north gate at 07:30 on Saturday 9 May.</text>
+    <text x="80" y="410">Budget approved for the season: 2,450 euros, of which 600 for new signage.</text>
+    <text x="80" y="500" font-size="26" font-weight="bold">Volunteer roster</text>
+    <text x="80" y="550">Name            | Task                 | Date</text>
+    <text x="80" y="590">M. Lindqvist   | carry stones         | 9 May</text>
+    <text x="80" y="630">D. Haddad       | repaint waymarks   | 16 May</text>
+    <text x="80" y="670">S. Moreau       | update the website | 23 May</text>
+  </g>
+  <text x="900" y="1450" font-size="28" font-family="cursive" fill="#335">R. Okafor</text>
+</svg>
