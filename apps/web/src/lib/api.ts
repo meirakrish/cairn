@@ -1,11 +1,17 @@
 import {
   AnswerEvent,
   CairnResponse,
+  CreateShareResponse,
   ListCairnsResponse,
+  ListSharesResponse,
   MeResponse,
+  RedeemShareLinkResponse,
+  SealedAnswerEvent,
   SourceResponse,
   type Cairn,
   type CreateCairnRequest,
+  type CreateShareRequest,
+  type Share,
   type Source,
   type User,
 } from '@cairn/shared';
@@ -60,6 +66,32 @@ export async function getCairn(fetch: Fetch, id: string): Promise<Cairn> {
   return CairnResponse.parse(await request(fetch, 'GET', `/api/cairns/${id}`)).cairn;
 }
 
+export async function listShares(cairnId: string): Promise<Share[]> {
+  return ListSharesResponse.parse(await request(fetch, 'GET', `/api/cairns/${cairnId}/shares`))
+    .shares;
+}
+
+/** Link shares come back with their token, once. */
+export async function createShare(
+  cairnId: string,
+  input: CreateShareRequest,
+): Promise<CreateShareResponse> {
+  return CreateShareResponse.parse(
+    await request(fetch, 'POST', `/api/cairns/${cairnId}/shares`, input),
+  );
+}
+
+export async function revokeShare(cairnId: string, shareId: string): Promise<void> {
+  await request(fetch, 'DELETE', `/api/cairns/${cairnId}/shares/${shareId}`);
+}
+
+/** Opens a share link for the signed-in user; returns the cairn id. */
+export async function redeemShareLink(token: string): Promise<string> {
+  return RedeemShareLinkResponse.parse(
+    await request(fetch, 'POST', `/api/share-links/${encodeURIComponent(token)}/redeem`),
+  ).cairnId;
+}
+
 export async function deleteSource(cairnId: string, sourceId: string): Promise<void> {
   await request(fetch, 'DELETE', `/api/cairns/${cairnId}/sources/${sourceId}`);
 }
@@ -101,13 +133,15 @@ export function uploadSource(
 }
 
 /**
- * Asks a question and calls `onEvent` for each answer event as it streams in. Errors before the stream
- * (validation, access, rate limit) throw an ApiError; `signal` stops the answer.
+ * Asks a question and calls `onEvent` for each answer event as it streams in. Sealed cairns answer
+ * with SealedAnswerEvents (text only). Errors before the stream (validation, access, rate limit)
+ * throw an ApiError; `signal` stops the answer.
  */
 export async function askQuestion(
   cairnId: string,
   question: string,
-  onEvent: (event: AnswerEvent) => void,
+  sealed: boolean,
+  onEvent: (event: AnswerEvent | SealedAnswerEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`/api/cairns/${cairnId}/query`, {
@@ -120,5 +154,6 @@ export async function askQuestion(
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new ApiError(res.status, err.error ?? `asking failed (${res.status})`);
   }
-  for await (const data of sseData(res.body)) onEvent(AnswerEvent.parse(JSON.parse(data)));
+  const schema = sealed ? SealedAnswerEvent : AnswerEvent;
+  for await (const data of sseData(res.body)) onEvent(schema.parse(JSON.parse(data)));
 }

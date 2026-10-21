@@ -13,6 +13,16 @@ const STATE_TTL_SECONDS = 10 * 60;
 interface PendingLogin {
   codeVerifier: string;
   nonce: string;
+  /** Where to land after signing in, e.g. a share link (/s/<token>). */
+  returnTo?: string;
+}
+
+// Only a path on this site: no other origin ("//evil", "/\\evil"), nothing under /api.
+function safeReturnTo(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 200) return undefined;
+  if (!/^\/(?![/\\])[A-Za-z0-9\-._~/?=&%]*$/.test(value)) return undefined;
+  if (value === '/api' || value.startsWith('/api/')) return undefined;
+  return value;
 }
 
 export function googleAuthRouter(deps: {
@@ -30,11 +40,16 @@ export function googleAuthRouter(deps: {
   const stateKey = (state: string) => `oauth:state:${state}`;
   const router = Router();
 
-  router.get('/start', async (_req, res) => {
+  // ?returnTo=/s/<token> brings the user back there after signing in.
+  router.get('/start', async (req, res) => {
     const state = randomBytes(24).toString('base64url');
     const nonce = randomBytes(24).toString('base64url');
     const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
-    const pending: PendingLogin = { codeVerifier, nonce };
+    const pending: PendingLogin = {
+      codeVerifier,
+      nonce,
+      returnTo: safeReturnTo(req.query.returnTo),
+    };
     await redis.set(stateKey(state), JSON.stringify(pending), 'EX', STATE_TTL_SECONDS);
 
     res.cookie(STATE_COOKIE, state, {
@@ -93,7 +108,7 @@ export function googleAuthRouter(deps: {
       // Rotate: the old session dies and the new cookie replaces it.
       await sessions.revoke(req);
       await sessions.create(res, { userId: user.id });
-      res.redirect('/');
+      res.redirect(pending.returnTo ?? '/');
     } catch (err) {
       fail('token exchange or verification error', err);
     }

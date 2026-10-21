@@ -438,3 +438,109 @@ button.cite.active {
   color: inherit;
   text-align: left;
 }
+
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+
+h1 + .badge {
+  margin: 0 0 0.75rem;
+}
+
+.sealed-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.share {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.share form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.share .kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.share .kinds input {
+  display: inline;
+  width: auto;
+  margin: 0 0.25rem 0 0;
+}
+
+.share .options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.share select {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+.new-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.new-link input {
+  flex: 1 1 20rem;
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.new-link small {
+  flex-basis: 100%;
+}
+
+.shares {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.shares li {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shares .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.shares .who {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.shares .row > :last-child {
+  margin-left: auto;
+}
