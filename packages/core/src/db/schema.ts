@@ -91,7 +91,7 @@ const readEditDelete = (name: string, cairnId: unknown, canDelete: (id: unknown)
 /** Vector length of chunks.embedding. Changing it needs a migration and re-embedding every chunk. */
 export const EMBEDDING_DIMENSIONS = 1024;
 
-export const SOURCE_KINDS = ['text', 'markdown', 'pdf', 'csv', 'json', 'image'] as const;
+export const SOURCE_KINDS = ['text', 'markdown', 'pdf', 'csv', 'json', 'image', 'web'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 export const SOURCE_STATUSES = ['pending', 'processing', 'ready', 'failed'] as const;
@@ -108,6 +108,8 @@ export const sources = pgTable(
       .references(() => cairns.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: SOURCE_KINDS }).notNull(),
     filename: text('filename').notNull(),
+    /** Where a web source was fetched from (null for uploads). */
+    url: text('url'),
     mime: text('mime').notNull(),
     storageKey: text('storage_key').notNull().unique(),
     size: integer('size').notNull(),

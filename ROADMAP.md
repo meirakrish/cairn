@@ -358,12 +358,12 @@ Step 3 as built (steps 1–3 grew together in shared files, so they went in as o
 
 Add a source by URL: Cairn fetches the page, keeps a snapshot, and indexes its main text like any other file. One URL = one source (no crawling).
 
-| Step | What                                                                                                                        | Status  | Branch                    |
-| ---- | --------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------- |
-| 1    | Safe fetcher in core: http(s) only, ports 80/443, public IPs only (checked at connect time), redirects re-checked, caps     | done    | `phase7/step1-fetch`      |
-| 2    | HTML → main text: Readability + linkedom → Markdown → `markdownSections` (heading locations); page title; kind `web`, `url` | planned | `phase7/step2-html`       |
-| 3    | Ingest + api: `POST /api/cairns/:id/sources` with JSON `{ url }`; worker fetches, stores the snapshot, extracts; refresh    | planned | `phase7/step3-ingest-api` |
-| 4    | Web: "Add link" next to attach (one URL per line); link rows in the file list; cited passages link to the page; eval pages  | planned | `phase7/step4-web-eval`   |
+| Step | What                                                                                                                       | Status  | Branch                    |
+| ---- | -------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------- |
+| 1    | Safe fetcher in core: http(s) only, ports 80/443, public IPs only (checked at connect time), redirects re-checked, caps    | done    | `phase7/step1-fetch`      |
+| 2    | HTML → main text: Readability + jsdom → Markdown → `markdownSections` (heading locations); page title; kind `web`, `url`   | done    | `phase7/step2-html`       |
+| 3    | Ingest + api: `POST /api/cairns/:id/sources` with JSON `{ url }`; worker fetches, stores the snapshot, extracts; refresh   | planned | `phase7/step3-ingest-api` |
+| 4    | Web: "Add link" next to attach (one URL per line); link rows in the file list; cited passages link to the page; eval pages | planned | `phase7/step4-web-eval`   |
 
 Plan (agreed 2026-10-21):
 
@@ -372,7 +372,7 @@ Plan (agreed 2026-10-21):
 - **Limits**: 20 s total timeout, body capped at the upload size (`UPLOAD_MAX_MEGA_BYTES`), streamed and cut off; no cookies or auth headers (public pages only); `User-Agent: Cairn/0.x (+repo url)`. User-initiated single fetches, like a link preview, so no robots.txt check.
 - **Content type decides the kind**: `text/html` → kind `web`; a URL that serves a PDF, CSV, JSON, image or plain text gets that kind and goes through the existing extractors (detected the same way as uploads). `url` stays set either way.
 - **Data model**: migration adds `sources.url text` (nullable) and kind `web`. The source starts as kind `web`, `filename` = the URL; after the fetch the worker sets kind, mime, size and `filename` = page title (fallback host + path). The snapshot goes to Garage under the usual `storageKey`, so re-extracting needs no refetch.
-- **HTML extraction**: `@mozilla/readability` on `linkedom` (no jsdom: lighter, no script execution), then `turndown` to Markdown and the existing `markdownSections`, so chunk locations are heading paths. Scripts, styles, nav and forms are dropped. Pages that render with JavaScript come out empty → permanent error "no readable text (the page may need JavaScript)". No headless browser (user: fine, as long as nothing reaches internal services).
+- **HTML extraction**: `@mozilla/readability` on `jsdom` (scripts off, nothing loaded; linkedom was tried in step 2 and dropped), then `turndown` to Markdown and the existing `markdownSections`, so chunk locations are heading paths. Scripts, styles, nav and forms are dropped. Pages that render with JavaScript come out empty → permanent error "no readable text (the page may need JavaScript)". No headless browser (user: fine, as long as nothing reaches internal services).
 - **Refresh**: `POST /api/cairns/:id/sources/:sourceId/refresh` (owner/editor) refetches and replaces the chunks; manual only, by the user (agreed); no automatic refresh.
 - **Same URL twice in a cairn**: 409 with the existing source, so the web can offer Refresh instead.
 - **Sharing**: the URL is source metadata: shown to cited callers (the passage popup links to it, with a `#:~:text=` fragment for the cited text), never to sealed callers or into a sealed prompt. Page text is untrusted input, like documents.
@@ -384,6 +384,14 @@ Step 1 as built:
 - Errors: URL problems, blocked addresses, 4xx, too large, unknown host, bad certificates, malformed answers → `PermanentIngestError` (short user messages); 5xx, 408/425/429, timeouts and other network errors → plain `Error` (retried).
 - `FetchPolicy` (`isAllowedAddress`, `allowedPorts: 'any'`) exists for tests (local servers on 127.0.0.1, random ports); production uses the defaults.
 - Tests: address ranges; URL refusals; fetch, `localhost` refused before any request reaches the server, redirect to 127.0.0.2 refused, redirect to `file:`, redirect limit, 404 vs 429/503, size caps, gzip bomb, timeout, `.invalid` host. Mutation check: disabling the lookup guard fails the `localhost` test.
+
+Step 2 as built:
+
+- Kind `web` and `sources.url` (nullable) in migration `0010_web_kind` (core schema + shared `SourceKind`; web label `WEB`). Run `pnpm db:migrate` on the dev database.
+- core `src/ingest/html.ts` `readHtml(data, contentType)` → `{ title, segments }`: `decodeHtml` (charset from the Content-Type, else a `<meta charset>` in the first 1 KB, else UTF-8; unknown labels → UTF-8), jsdom with a silent `VirtualConsole` (closed after), Readability for the article; if it gives < 200 visible characters, the whole body minus nav/header/footer/aside/form is used when that has more. Turndown: ATX headings, no escapes (they'd be noise in chunks), scripts/styles/iframes/svg/buttons dropped, links → their text, images/media dropped, tables → `a | b` rows. Then `markdownSections` (heading paths). Nothing left → permanent "no readable text on the page (it may need JavaScript)". Title: Readability's, else `<title>`, whitespace collapsed, ≤ 200 chars (step 3 falls back to host + path).
+- `extract('web', data, { contentType })`; `IngestService` passes `source.mime` as the content type, so web sources must store the Content-Type as sent (step 3).
+- linkedom was tried first and dropped: it isn't an HTML5 parser (`<p>Hi</p>` without `<html>`/`<body>` came out as `<p><head></head><body></body>Hi</p>`, and a page without `<html>` lost its body). domino parses correctly but Readability fails on it (`NodeList` not iterable). jsdom `^30.1.3` needs Node `^22.22.2`.
+- Tests: article vs nav/footer, heading paths, table rows, scripts/styles/links/images gone, no escapes, short-page fallback, JavaScript-only page fails, charsets (header, meta, fallback), and ingest end to end with a windows-1252 page.
 
 ## Phase 8: quiz (built before Phase 7)
 
@@ -490,4 +498,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 7 step 2 (HTML → main text); later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 7 step 3 (ingest + api for URLs); later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
