@@ -918,6 +918,8 @@ button.cite.active {
 
 .mode-switch {
   display: inline-flex;
+  box-sizing: border-box;
+  height: 2.75rem; /* as tall as .icon-button */
   gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 14px;
@@ -925,7 +927,7 @@ button.cite.active {
 }
 
 .mode-switch button {
-  padding: 0.35rem 1rem;
+  padding: 0 1rem;
   border: none;
   border-radius: 10px;
   color: var(--muted);
