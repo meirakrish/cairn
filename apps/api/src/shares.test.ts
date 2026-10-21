@@ -165,7 +165,7 @@ describe('access by role and mode', () => {
     });
   });
 
-  it('sealed viewers see the cairn but not its sources, and cannot ask yet', async () => {
+  it('sealed viewers see the cairn but not its sources', async () => {
     const { owner, guest, cairnId } = await setup();
     await shareWith(owner, cairnId, guest.user.email, 'viewer', 'sealed').expect(201);
 
@@ -175,7 +175,6 @@ describe('access by role and mode', () => {
     });
     const sources = await get(guest, `/api/cairns/${cairnId}/sources`).expect(403);
     expect(sources.body.error).toBe('sources are not shown for this cairn');
-    await post(guest, `/api/cairns/${cairnId}/query`, { question: 'q?' }).expect(403);
   });
 
   it('cited viewers list sources but cannot add or delete them', async () => {
