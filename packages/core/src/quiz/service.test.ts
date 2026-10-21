@@ -263,6 +263,43 @@ describe('QuizService.next', () => {
     expect(next).toMatchObject({ question: 'What about bravo?', seenBefore: false });
   });
 
+  it('counts a rewording of an asked question as the same question', async () => {
+    const { user, cairn } = await cairnWith([long('Cairns mark trails.')]);
+    const quiz = new QuizService(app.db, scriptedLlm({ structured: [] }));
+    const [chunk] = await admin.db.select().from(chunks);
+    const bank = (question: string) => ({
+      cairnId: cairn.id,
+      chunkId: chunk!.id,
+      question,
+      choices: ['x', 'y'],
+      correctChoice: 0,
+      answer: 'x',
+      explanation: 'e',
+    });
+    await admin.db
+      .insert(quizQuestions)
+      .values([
+        bank('Which technology served as the foundation for the core monitoring platform?'),
+        bank('Which technology formed the foundation of the core monitoring platform?'),
+        bank('Which cloud providers does the team use?'),
+        bank('What is the retention period of the data lake?'),
+      ]);
+
+    // Four rows, three different questions: the rewording is never put as a second question.
+    const first = [];
+    for (let i = 0; i < 3; i++) first.push(await quiz.next(user.id, cairn.id));
+    expect(first.every((q) => !q.seenBefore)).toBe(true);
+    expect(first.filter((q) => /foundation/.test(q.question))).toHaveLength(1);
+
+    // Then repeats, the foundation question counted once and not twice in a row.
+    const repeats = [];
+    for (let i = 0; i < 6; i++) repeats.push((await quiz.next(user.id, cairn.id)).question);
+    repeats.forEach((q, i) => {
+      if (i > 0) expect(q).not.toBe(repeats[i - 1]);
+    });
+    expect(repeats.filter((q) => /foundation/.test(q))).toHaveLength(2);
+  });
+
   it('prepare() writes ahead, so next() needs no model call', async () => {
     const { user, cairn } = await cairnWith([long('First.'), long('Second.')]);
     const llm = numbered();

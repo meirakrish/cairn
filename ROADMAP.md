@@ -496,6 +496,8 @@ Sources in the main window (2026-10-21): the database button is a toggle (presse
 
 Quiz buttons (2026-10-21): End quiz moved from the top bar to the bottom row, right-aligned next to Skip (also shown with the verdict and on a load error).
 
+Same question again (2026-10-21): a dev cairn (1 file, 3 passages, 15 bank questions, 51 attempts) kept showing three rewordings of one question ("served as / formed the foundation of the core monitoring platform"), because "seen" was an exact-text match and only new drafts were checked with `similarQuestion`. Now `unseen`, `unseenCount` and `seenLongestAgo` (core `quiz/service.ts`) treat a rewording (`sameQuestion`: same normalized text or `similarQuestion`) as the same question, in the bank and against what you were asked; they pick in code over the bank rather than in SQL. Old rewordings stay in the bank but are served as one. A cairn that can make only one distinct question still repeats it.
+
 ## Current layout
 
 ```

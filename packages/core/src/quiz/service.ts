@@ -272,55 +272,84 @@ const bankQuestions = (cairnId: string) => sql`
   where q.cairn_id = ${cairnId} and s.status = 'ready'
 `;
 
-// The question's text with case and punctuation ignored: copies of one question match.
-const normalized = (column: SQL) =>
+// The question's text with case and punctuation ignored: copies of one question match (the same
+// rule in SQL, for counting the distinct questions of a passage).
+const normalizedSql = (column: SQL) =>
   sql`trim(regexp_replace(lower(${column}), '[^[:alnum:]]+', ' ', 'g'))`;
+const normalizeText = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 
-// Not put to the caller, nor any question with the same text (two people's quizzes can write the
-// same question, and the first version of the quiz saved repeats as new rows).
-const notAsked = (userId: string) => sql`
-  not exists (
-    select 1 from ${quizAttempts} a
-    join ${quizQuestions} seen on seen.id = a.question_id
-    where a.user_id = ${userId} and seen.cairn_id = b.cairn_id
-      and ${normalized(sql`seen.question`)} = ${normalized(sql`b.question`)}
-  )
-`;
+// One question: the same text, or a rewording of it (the model rewrites "served as the foundation
+// for" as "formed the foundation of", and two versions in a row look like a repeat).
+const sameQuestion = (a: string, b: string) =>
+  normalizeText(a) === normalizeText(b) || similarQuestion(a, b);
+
+interface Asked {
+  question: string;
+  lastSeen: number;
+}
+
+/** The questions put to the caller in this cairn, each with when it was last shown. */
+async function askedBefore(tx: Tx, userId: string, cairnId: string): Promise<Asked[]> {
+  const rows = await tx.execute<{ question: string; last_seen: string }>(sql`
+    select q.question, max(a.created_at) as last_seen
+    from ${quizAttempts} a
+    join ${quizQuestions} q on q.id = a.question_id
+    where a.user_id = ${userId} and q.cairn_id = ${cairnId}
+    group by q.question
+  `);
+  return rows.map((r) => ({ question: r.question, lastSeen: new Date(r.last_seen).getTime() }));
+}
+
+/** Bank questions, files equally likely, in random order within that. */
+function bankRows(tx: Tx, cairnId: string) {
+  return tx.execute<QuizRow>(sql`
+    select * from (${bankQuestions(cairnId)}) b order by file_rank, random()
+  `);
+}
+
+/**
+ * Bank questions the caller has no version of yet (two questions can be copies or rewordings of
+ * each other, even in the same bank), at random, files equally likely.
+ */
+async function freshQuestions(tx: Tx, userId: string, cairnId: string): Promise<QuizRow[]> {
+  const asked = await askedBefore(tx, userId, cairnId);
+  const fresh: QuizRow[] = [];
+  for (const row of await bankRows(tx, cairnId)) {
+    const known = (q: { question: string }) => sameQuestion(q.question, row.question);
+    if (!asked.some(known) && !fresh.some(known)) fresh.push(row);
+  }
+  return fresh;
+}
 
 /** A bank question never put to the caller, at random, files equally likely. */
 async function unseen(tx: Tx, userId: string, cairnId: string) {
-  const [row] = await tx.execute<QuizRow>(sql`
-    select * from (${bankQuestions(cairnId)}) b
-    where ${notAsked(userId)}
-    order by file_rank, random()
-    limit 1
-  `);
+  const [row] = await freshQuestions(tx, userId, cairnId);
   return row && fromRow(row);
 }
 
 async function unseenCount(tx: Tx, userId: string, cairnId: string) {
-  const [row] = await tx.execute<{ n: number }>(sql`
-    select count(*)::int as n from (${bankQuestions(cairnId)}) b where ${notAsked(userId)}
-  `);
-  return row!.n;
+  return (await freshQuestions(tx, userId, cairnId)).length;
 }
 
-/** The bank question the caller saw longest ago; copies of one question count as one. */
+/** The bank question the caller saw longest ago; copies and rewordings of one question count as one. */
 async function seenLongestAgo(tx: Tx, userId: string, cairnId: string) {
-  const [row] = await tx.execute<QuizRow>(sql`
-    with seen as (
-      select ${normalized(sql`q.question`)} as text, max(a.created_at) as last_seen
-      from ${quizAttempts} a
-      join ${quizQuestions} q on q.id = a.question_id
-      where a.user_id = ${userId} and q.cairn_id = ${cairnId}
-      group by 1
-    )
-    select b.* from (${bankQuestions(cairnId)}) b
-    join seen on seen.text = ${normalized(sql`b.question`)}
-    order by seen.last_seen, b.created_at
-    limit 1
-  `);
-  return row && fromRow(row);
+  const asked = await askedBefore(tx, userId, cairnId);
+  let best: { row: QuizRow; lastSeen: number } | undefined;
+  for (const row of await bankRows(tx, cairnId)) {
+    const times = asked.filter((a) => sameQuestion(a.question, row.question));
+    if (times.length === 0) continue;
+    const lastSeen = Math.max(...times.map((a) => a.lastSeen));
+    const older =
+      !best ||
+      lastSeen < best.lastSeen ||
+      (lastSeen === best.lastSeen && new Date(row.created_at) < new Date(best.row.created_at));
+    if (older) best = { row, lastSeen };
+  }
+  return best && fromRow(best.row);
 }
 
 /**
@@ -337,7 +366,7 @@ async function passageToWriteFrom(tx: Tx, cairnId: string, skip: string[]) {
     filename: string;
   }>(sql`
     with counts as (
-      select chunk_id, count(distinct ${normalized(sql`question`)})::int as n from ${quizQuestions}
+      select chunk_id, count(distinct ${normalizedSql(sql`question`)})::int as n from ${quizQuestions}
       where cairn_id = ${cairnId}
       group by chunk_id
     ),
