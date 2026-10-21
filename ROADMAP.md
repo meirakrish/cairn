@@ -494,6 +494,8 @@ Test me starts at once (2026-10-21): `QuizPanel` fetches the first question when
 
 Sources in the main window (2026-10-21): the database button is a toggle (pressed while open) that swaps the main content to the sources list (add buttons, Refresh, Delete) instead of a popover; Ask / Test me tabs or the button again go back. The Ask panel stays mounted and the quiz mounts on first visit, both hidden meanwhile, so an answer or a quiz in progress isn't lost.
 
+Quiz buttons (2026-10-21): End quiz moved from the top bar to the bottom row, right-aligned next to Skip (also shown with the verdict and on a load error).
+
 ## Current layout
 
 ```

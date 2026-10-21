@@ -940,6 +940,13 @@ button.cite.active {
   color: var(--accent);
 }
 
+/* Skip and End quiz: pushed to the right end of the row. */
+.quiz .end-group {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
+}
+
 .quiz .actions {
   justify-content: flex-start;
   align-items: center;

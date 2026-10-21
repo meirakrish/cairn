@@ -132,7 +132,6 @@
         Question {outcomes.length + (phase === 'result' ? 0 : 1)}
         {#if outcomes.length}· {describeScore(score)}{/if}
       </small>
-      <button type="button" class="link" onclick={end}>End quiz</button>
     </div>
 
     {#if phase === 'loading'}
@@ -140,6 +139,9 @@
         <p class="error">{error}</p>
         <div class="actions">
           <button type="button" class="primary" onclick={() => void next()}>Try again</button>
+          <span class="end-group">
+            <button type="button" class="link" onclick={end}>End quiz</button>
+          </span>
         </div>
       {:else}
         <p class="muted" aria-live="polite">Writing a question…</p>
@@ -216,9 +218,13 @@
                 Show the passage
               </button>
             {/if}
-          {:else if phase === 'asking'}
-            <button type="button" class="link" onclick={skip}>Skip</button>
           {/if}
+          <span class="end-group">
+            {#if phase === 'asking'}
+              <button type="button" class="link" onclick={skip}>Skip</button>
+            {/if}
+            <button type="button" class="link" onclick={end}>End quiz</button>
+          </span>
         </div>
       </article>
     {/if}
