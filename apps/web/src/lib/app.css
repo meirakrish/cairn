@@ -741,17 +741,17 @@ button.link:hover {
   color: var(--muted);
 }
 
-.delete-confirm {
-  margin-top: 0.5rem;
-  flex-wrap: wrap;
-}
-
 button.danger {
   padding: 0.2rem 0.6rem;
   border-color: var(--error);
   background: var(--error);
   color: var(--on-error);
   font-size: 0.85rem;
+}
+
+.modal button.danger {
+  padding: 0.5rem 1rem;
+  font-size: inherit;
 }
 
 .ask {

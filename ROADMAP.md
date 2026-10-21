@@ -486,7 +486,7 @@ Branch `phase11/cairn-header-actions` (from `phase10/sources-panel`). Asked for 
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | 1    | Web: a small pencil and a trash button beside the title (owner only); delete moves out of the edit dialog, confirm shows under the title | done   |
 
-As built: `CairnDialog` is back to create/edit only; the page holds the delete state (`removeCairn`). Not checked in a browser.
+As built: `CairnDialog` is back to create/edit only; the trash opens `DeleteCairnDialog` (a modal like the edit one: name, warning, Cancel / Delete cairn, inline error; Escape and backdrop are ignored while deleting). Not checked in a browser.
 
 ## Current layout
 

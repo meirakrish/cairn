@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { goto, invalidateAll } from '$app/navigation';
-  import { resolve } from '$app/paths';
   import { SourceEvent, type Source } from '@cairn/shared';
   import AddLinks from '#lib/AddLinks.svelte';
   import { hostOf, sseData } from '#lib/answer.ts';
-  import { deleteCairn, deleteSource, refreshSource, uploadSource } from '#lib/api.ts';
+  import { deleteSource, refreshSource, uploadSource } from '#lib/api.ts';
   import AskPanel from '#lib/AskPanel.svelte';
   import CairnDialog from '#lib/CairnDialog.svelte';
+  import DeleteCairnDialog from '#lib/DeleteCairnDialog.svelte';
   import ExternalLink from '#lib/ExternalLink.svelte';
   import Popover from '#lib/Popover.svelte';
   import QuizPanel from '#lib/QuizPanel.svelte';
@@ -44,10 +43,7 @@
   let rowErrors = $state<Record<string, string>>({});
   let fileInput = $state<HTMLInputElement>();
   let addingLinks = $state(false);
-  // Inline cairn delete confirmation (no browser dialogs).
-  let confirmingDelete = $state(false);
-  let deletingCairn = $state(false);
-  let deleteError = $state<string | null>(null);
+  let deleteDialog = $state<DeleteCairnDialog>();
   let editDialog = $state<CairnDialog>();
   // Ask questions, or be quizzed (callers who can see sources only; the api enforces it too).
   let mode = $state<'ask' | 'quiz'>('ask');
@@ -175,21 +171,6 @@
     }
   }
 
-  async function removeCairn() {
-    deletingCairn = true;
-    deleteError = null;
-    try {
-      await deleteCairn(data.cairn.id);
-      await invalidateAll();
-      await goto(resolve('/'));
-    } catch (err) {
-      deleteError = err instanceof Error ? err.message : 'Could not delete the cairn.';
-      confirmingDelete = false;
-    } finally {
-      deletingCairn = false;
-    }
-  }
-
   async function refresh(source: Source) {
     refreshing = source.id;
     delete rowErrors[source.id];
@@ -276,9 +257,7 @@
           class="icon-button small"
           aria-label="Delete this cairn"
           title="Delete this cairn"
-          aria-expanded={confirmingDelete}
-          disabled={deletingCairn}
-          onclick={() => (confirmingDelete = !confirmingDelete)}
+          onclick={() => deleteDialog?.open(data.cairn)}
         >
           <svg class="icon" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"
             ><path
@@ -289,22 +268,6 @@
       {/if}
     </div>
     {#if data.cairn.description}<p class="muted">{data.cairn.description}</p>{/if}
-    {#if confirmingDelete}
-      <p class="confirm delete-confirm">
-        Delete “{data.cairn.name}” with all its files, shares and quiz history? This can't be
-        undone.
-        <button type="button" class="danger" disabled={deletingCairn} onclick={removeCairn}
-          >{deletingCairn ? 'Deleting…' : 'Delete cairn'}</button
-        >
-        <button
-          type="button"
-          class="link"
-          disabled={deletingCairn}
-          onclick={() => (confirmingDelete = false)}>Keep it</button
-        >
-      </p>
-    {/if}
-    {#if deleteError}<p class="error">{deleteError}</p>{/if}
   </div>
 
   {#if !sealed}
@@ -486,7 +449,10 @@
   />
 {/if}
 
-{#if isOwner}<CairnDialog bind:this={editDialog} />{/if}
+{#if isOwner}
+  <CairnDialog bind:this={editDialog} />
+  <DeleteCairnDialog bind:this={deleteDialog} />
+{/if}
 
 {#if dragging}
   <div class="drop-overlay" aria-hidden="true">
