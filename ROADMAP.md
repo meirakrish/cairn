@@ -360,22 +360,30 @@ Add a source by URL: Cairn fetches the page, keeps a snapshot, and indexes its m
 
 | Step | What                                                                                                                        | Status  | Branch                    |
 | ---- | --------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------- |
-| 1    | Safe fetcher in core: http(s) only, ports 80/443, public IPs only (checked at connect time), redirects re-checked, caps     | planned | `phase7/step1-fetch`      |
+| 1    | Safe fetcher in core: http(s) only, ports 80/443, public IPs only (checked at connect time), redirects re-checked, caps     | done    | `phase7/step1-fetch`      |
 | 2    | HTML → main text: Readability + linkedom → Markdown → `markdownSections` (heading locations); page title; kind `web`, `url` | planned | `phase7/step2-html`       |
 | 3    | Ingest + api: `POST /api/cairns/:id/sources` with JSON `{ url }`; worker fetches, stores the snapshot, extracts; refresh    | planned | `phase7/step3-ingest-api` |
 | 4    | Web: "Add link" next to attach (one URL per line); link rows in the file list; cited passages link to the page; eval pages  | planned | `phase7/step4-web-eval`   |
 
-Plan (proposed 2026-10-21, not yet agreed):
+Plan (agreed 2026-10-21):
 
 - **The worker fetches, not the api.** Slow sites don't hold a request open, and fetch errors land in the source's status like any ingest error (`failed: the site answered 404`). The api only validates the URL: http/https, ≤ 2048 chars, no `user:pass@`, host not an IP literal in a private range (fast feedback; the real check is in the fetcher).
 - **SSRF is the main risk**: the worker sits next to Postgres, Redis and Garage. The fetcher uses an undici `Agent` whose `connect.lookup` resolves the host and refuses loopback, private, link-local (incl. `169.254.169.254`), CGNAT, multicast, unspecified and IPv4-mapped/ULA IPv6 addresses, so the check applies to the address actually connected (no DNS rebinding gap). `redirect: 'manual'`, max 5 hops, each re-checked (scheme, port, address). Later, defense in depth: a NetworkPolicy giving the worker egress to public IPs only. DESIGN.md Security changes: "the worker gets … and outbound HTTP through the guarded fetcher".
 - **Limits**: 20 s total timeout, body capped at the upload size (`UPLOAD_MAX_MEGA_BYTES`), streamed and cut off; no cookies or auth headers (public pages only); `User-Agent: Cairn/0.x (+repo url)`. User-initiated single fetches, like a link preview, so no robots.txt check.
 - **Content type decides the kind**: `text/html` → kind `web`; a URL that serves a PDF, CSV, JSON, image or plain text gets that kind and goes through the existing extractors (detected the same way as uploads). `url` stays set either way.
 - **Data model**: migration adds `sources.url text` (nullable) and kind `web`. The source starts as kind `web`, `filename` = the URL; after the fetch the worker sets kind, mime, size and `filename` = page title (fallback host + path). The snapshot goes to Garage under the usual `storageKey`, so re-extracting needs no refetch.
-- **HTML extraction**: `@mozilla/readability` on `linkedom` (no jsdom: lighter, no script execution), then `turndown` to Markdown and the existing `markdownSections`, so chunk locations are heading paths. Scripts, styles, nav and forms are dropped. Pages that render with JavaScript come out empty → permanent error "no readable text (the page may need JavaScript)". No headless browser.
-- **Refresh**: `POST /api/cairns/:id/sources/:sourceId/refresh` (owner/editor) refetches and replaces the chunks; no automatic refresh.
+- **HTML extraction**: `@mozilla/readability` on `linkedom` (no jsdom: lighter, no script execution), then `turndown` to Markdown and the existing `markdownSections`, so chunk locations are heading paths. Scripts, styles, nav and forms are dropped. Pages that render with JavaScript come out empty → permanent error "no readable text (the page may need JavaScript)". No headless browser (user: fine, as long as nothing reaches internal services).
+- **Refresh**: `POST /api/cairns/:id/sources/:sourceId/refresh` (owner/editor) refetches and replaces the chunks; manual only, by the user (agreed); no automatic refresh.
 - **Same URL twice in a cairn**: 409 with the existing source, so the web can offer Refresh instead.
 - **Sharing**: the URL is source metadata: shown to cited callers (the passage popup links to it, with a `#:~:text=` fragment for the cited text), never to sealed callers or into a sealed prompt. Page text is untrusted input, like documents.
+
+Step 1 as built:
+
+- core `src/web/address.ts` `isPublicAddress(ip)`: `net.BlockList` of private/special IPv4 ranges (0/8, 10/8, 100.64/10, 127/8, 169.254/16, 172.16/12, 192.168/16, 198.18/15, documentation, multicast, 240/4); IPv6 must be global unicast (2000::/3) and not 2001::/23, 2001:db8::/32 or 2002::/16, which also rules out `::1`, IPv4-mapped, NAT64, ULA, link-local and multicast.
+- core `src/web/fetch.ts`: `checkWebUrl(raw)` (http/https, ≤ 2048 chars, no credentials, ports 80/443, IP literals checked; `URL` already normalises `0x7f.1`, `2130706433` to dotted form) and `fetchUrl(url, { maxBytes })`. Built on `node:http(s)` with no new dependency: the socket's `lookup` resolves every address of the host and refuses the host if any is not public, so the checked address is the one connected to. Redirects (301/302/303/307/308) manual, max 5, each through `checkWebUrl`. 20 s for the whole fetch; body capped after decompression (gzip, deflate, br; other encodings refused), Content-Length checked first; `agent: false`, no cookies, `User-Agent: Cairn/0.1 (+repo)`.
+- Errors: URL problems, blocked addresses, 4xx, too large, unknown host, bad certificates, malformed answers → `PermanentIngestError` (short user messages); 5xx, 408/425/429, timeouts and other network errors → plain `Error` (retried).
+- `FetchPolicy` (`isAllowedAddress`, `allowedPorts: 'any'`) exists for tests (local servers on 127.0.0.1, random ports); production uses the defaults.
+- Tests: address ranges; URL refusals; fetch, `localhost` refused before any request reaches the server, redirect to 127.0.0.2 refused, redirect to `file:`, redirect limit, 404 vs 429/503, size caps, gzip bomb, timeout, `.invalid` host. Mutation check: disabling the lookup guard fails the `localhost` test.
 
 ## Phase 8: quiz (built before Phase 7)
 
@@ -482,4 +490,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: merge `phase8/quiz`; Phase 7 (web pages, above) once the plan is agreed; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 7 step 2 (HTML → main text); later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
