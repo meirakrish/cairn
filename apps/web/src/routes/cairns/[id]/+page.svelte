@@ -174,6 +174,12 @@
     }
   }
 
+  // The sources page always opens with the add-web-pages form closed.
+  function toggleSources() {
+    addingLinks = false;
+    mode = mode === 'sources' ? lastMode : 'sources';
+  }
+
   function pick(tab: 'ask' | 'quiz') {
     mode = lastMode = tab;
     if (tab === 'quiz') quizOpened = true;
@@ -284,7 +290,7 @@
         aria-label="Sources"
         title="Sources"
         aria-pressed={mode === 'sources'}
-        onclick={() => (mode = mode === 'sources' ? lastMode : 'sources')}
+        onclick={toggleSources}
       >
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
           ><ellipse cx="12" cy="5.5" rx="7.5" ry="3" /><path
@@ -393,7 +399,11 @@
           Add web pages
         </button>
       </div>
-      {#if addingLinks}<AddLinks cairnId={data.cairn.id} onadded={upsert} />{/if}
+      {#if addingLinks}<AddLinks
+          cairnId={data.cairn.id}
+          onadded={upsert}
+          ondone={() => (addingLinks = false)}
+        />{/if}
     {/if}
     {#if sources.length === 0 && live === 'live'}
       <p class="muted">

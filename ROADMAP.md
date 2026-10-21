@@ -500,6 +500,8 @@ Same question again (2026-10-21): a dev cairn (1 file, 3 passages, 15 bank quest
 
 Festive results (2026-10-21): a right answer shows "Right 🎉" with a confetti shower in the verdict box and, from two in a row, "N in a row 🔥"; the end screen is centred with an emoji and a headline by score (`cheer()` in `quiz.ts`: 🏆 Perfect score!, 🎉 Great job! from 80% of at least three answers, with confetti; 👏 Nicely done from 50%; 🌱 Good practice below). `Confetti.svelte` is CSS-only and hidden under `prefers-reduced-motion`. Wrong answers stay plain. Not checked in a browser.
 
+Add web pages form (2026-10-21): it closes by itself once every link was added (`AddLinks` `ondone`; links that fail keep it open with their messages), and it is closed whenever the Sources page opens.
+
 ## Current layout
 
 ```
