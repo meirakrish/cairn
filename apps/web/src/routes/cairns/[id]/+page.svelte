@@ -46,7 +46,10 @@
   let deleteDialog = $state<DeleteCairnDialog>();
   let editDialog = $state<CairnDialog>();
   // Ask questions, or be quizzed (callers who can see sources only; the api enforces it too).
-  let mode = $state<'ask' | 'quiz'>('ask');
+  let mode = $state<'ask' | 'quiz' | 'sources'>('ask');
+  // The tab the Sources button returns to; the quiz mounts on first visit and then stays.
+  let lastMode = $state<'ask' | 'quiz'>('ask');
+  let quizOpened = $state(false);
   let nextKey = 0;
 
   const byNewest = (a: Source, b: Source) => b.createdAt.localeCompare(a.createdAt);
@@ -171,6 +174,11 @@
     }
   }
 
+  function pick(tab: 'ask' | 'quiz') {
+    mode = lastMode = tab;
+    if (tab === 'quiz') quizOpened = true;
+  }
+
   async function refresh(source: Source) {
     refreshing = source.id;
     delete rowErrors[source.id];
@@ -259,117 +267,32 @@
 
   {#if !sealed}
     <div class="mode-switch" role="tablist" aria-label="Ask questions or be tested">
-      <button type="button" role="tab" aria-selected={mode === 'ask'} onclick={() => (mode = 'ask')}
+      <button type="button" role="tab" aria-selected={mode === 'ask'} onclick={() => pick('ask')}
         >Ask</button
       >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={mode === 'quiz'}
-        onclick={() => (mode = 'quiz')}>Test me</button
+      <button type="button" role="tab" aria-selected={mode === 'quiz'} onclick={() => pick('quiz')}
+        >Test me</button
       >
     </div>
   {/if}
 
   <div class="cairn-actions">
     {#if !sealed}
-      <Popover label="Sources" count={live === 'connecting' ? undefined : sources.length}>
-        {#snippet icon()}
-          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-            ><ellipse cx="12" cy="5.5" rx="7.5" ry="3" /><path
-              d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"
-            /></svg
-          >
-        {/snippet}
-        <div class="sources-header">
-          <h2>Sources</h2>
-          <span class="live {live}" title="Status updates">{LIVE_LABEL[live]}</span>
-        </div>
-        {#if canUpload}
-          <div class="add-sources">
-            <button type="button" onclick={() => fileInput?.click()}>
-              <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-                ><path
-                  d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
-                /></svg
-              >
-              Add files
-            </button>
-            <button
-              type="button"
-              aria-expanded={addingLinks}
-              onclick={() => (addingLinks = !addingLinks)}
-            >
-              <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-                ><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path
-                  d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"
-                /></svg
-              >
-              Add web pages
-            </button>
-          </div>
-          {#if addingLinks}<AddLinks cairnId={data.cairn.id} onadded={upsert} />{/if}
-        {/if}
-        {#if sources.length === 0 && live === 'live'}
-          <p class="muted">
-            Nothing here yet.{canUpload ? ' Add files or web pages to build this cairn.' : ''}
-          </p>
-        {:else}
-          <ul class="sources">
-            {#each sources as source (source.id)}
-              <li>
-                <div class="row">
-                  <span class="kind">{KIND_LABEL[source.kind]}</span>
-                  {#if source.url}
-                    <ExternalLink class="name" href={source.url} title={source.url}
-                      >{source.filename}</ExternalLink
-                    >
-                  {:else}
-                    <span class="name" title={source.filename}>{source.filename}</span>
-                  {/if}
-                  <span class="status {source.status}">{STATUS_LABEL[source.status]}</span>
-                  {#if refreshing === source.id}
-                    <span class="muted">Refreshing…</span>
-                  {:else if canRefresh(source) && confirming !== source.id}
-                    <button type="button" class="link" onclick={() => refresh(source)}
-                      >Refresh</button
-                    >
-                  {/if}
-                  {#if !isOwner}
-                    <!-- Only the owner deletes files. -->
-                  {:else if deleting === source.id}
-                    <span class="muted">Deleting…</span>
-                  {:else if confirming === source.id}
-                    <span class="confirm">
-                      Delete?
-                      <button type="button" class="danger" onclick={() => remove(source)}
-                        >Delete</button
-                      >
-                      <button type="button" class="link" onclick={() => (confirming = null)}
-                        >Cancel</button
-                      >
-                    </span>
-                  {:else}
-                    <button type="button" class="link" onclick={() => (confirming = source.id)}
-                      >Delete</button
-                    >
-                  {/if}
-                </div>
-                <small class="muted"
-                  >{source.url ? `${hostOf(source.url)} · ` : ''}{source.size
-                    ? `${formatSize(source.size)} · `
-                    : ''}added {dateFormat.format(new Date(source.createdAt))}</small
-                >
-                {#if source.status === 'failed' && source.error}<p class="error">
-                    {source.error}
-                  </p>{/if}
-                {#if rowErrors[source.id]}<p class="error">{rowErrors[source.id]}</p>{/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        {#if canUpload}<small class="muted">{UPLOAD_NOTE}</small>{/if}
-      </Popover>
+      <button
+        type="button"
+        class="icon-button with-count"
+        aria-label="Sources"
+        title="Sources"
+        aria-pressed={mode === 'sources'}
+        onclick={() => (mode = mode === 'sources' ? lastMode : 'sources')}
+      >
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+          ><ellipse cx="12" cy="5.5" rx="7.5" ry="3" /><path
+            d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"
+          /></svg
+        >
+        {#if live !== 'connecting'}<span>{sources.length}</span>{/if}
+      </button>
     {/if}
 
     {#if !sealed}
@@ -441,21 +364,115 @@
   </ul>
 {/if}
 
-{#if mode === 'quiz' && !sealed}
-  <!-- A new cairn starts a new quiz. -->
-  {#key data.cairn.id}
-    <QuizPanel
-      cairnId={data.cairn.id}
-      readySources={sources.filter((s) => s.status === 'ready').length}
-    />
-  {/key}
-{:else}
+{#if mode === 'sources' && !sealed}
+  <section class="sources-view" aria-label="Sources">
+    <div class="sources-header">
+      <h2>Sources</h2>
+      <span class="live {live}" title="Status updates">{LIVE_LABEL[live]}</span>
+    </div>
+    {#if canUpload}
+      <div class="add-sources">
+        <button type="button" onclick={() => fileInput?.click()}>
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+            ><path
+              d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
+            /></svg
+          >
+          Add files
+        </button>
+        <button
+          type="button"
+          aria-expanded={addingLinks}
+          onclick={() => (addingLinks = !addingLinks)}
+        >
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+            ><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path
+              d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"
+            /></svg
+          >
+          Add web pages
+        </button>
+      </div>
+      {#if addingLinks}<AddLinks cairnId={data.cairn.id} onadded={upsert} />{/if}
+    {/if}
+    {#if sources.length === 0 && live === 'live'}
+      <p class="muted">
+        Nothing here yet.{canUpload ? ' Add files or web pages to build this cairn.' : ''}
+      </p>
+    {:else}
+      <ul class="sources">
+        {#each sources as source (source.id)}
+          <li>
+            <div class="row">
+              <span class="kind">{KIND_LABEL[source.kind]}</span>
+              {#if source.url}
+                <ExternalLink class="name" href={source.url} title={source.url}
+                  >{source.filename}</ExternalLink
+                >
+              {:else}
+                <span class="name" title={source.filename}>{source.filename}</span>
+              {/if}
+              <span class="status {source.status}">{STATUS_LABEL[source.status]}</span>
+              {#if refreshing === source.id}
+                <span class="muted">Refreshing…</span>
+              {:else if canRefresh(source) && confirming !== source.id}
+                <button type="button" class="link" onclick={() => refresh(source)}>Refresh</button>
+              {/if}
+              {#if !isOwner}
+                <!-- Only the owner deletes files. -->
+              {:else if deleting === source.id}
+                <span class="muted">Deleting…</span>
+              {:else if confirming === source.id}
+                <span class="confirm">
+                  Delete?
+                  <button type="button" class="danger" onclick={() => remove(source)}>Delete</button
+                  >
+                  <button type="button" class="link" onclick={() => (confirming = null)}
+                    >Cancel</button
+                  >
+                </span>
+              {:else}
+                <button type="button" class="link" onclick={() => (confirming = source.id)}
+                  >Delete</button
+                >
+              {/if}
+            </div>
+            <small class="muted"
+              >{source.url ? `${hostOf(source.url)} · ` : ''}{source.size
+                ? `${formatSize(source.size)} · `
+                : ''}added {dateFormat.format(new Date(source.createdAt))}</small
+            >
+            {#if source.status === 'failed' && source.error}<p class="error">
+                {source.error}
+              </p>{/if}
+            {#if rowErrors[source.id]}<p class="error">{rowErrors[source.id]}</p>{/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if canUpload}<small class="muted">{UPLOAD_NOTE}</small>{/if}
+  </section>
+{/if}
+
+<!-- Kept mounted (hidden) while you look at the sources, so an answer or a quiz isn't lost. -->
+<div hidden={mode !== 'ask'}>
   <AskPanel
     cairnId={data.cairn.id}
     readySources={sources.filter((s) => s.status === 'ready').length}
     {sealed}
     onattach={canUpload && !sealed ? () => fileInput?.click() : undefined}
   />
+</div>
+{#if quizOpened && !sealed}
+  <!-- A new cairn starts a new quiz. -->
+  <div hidden={mode !== 'quiz'}>
+    {#key data.cairn.id}
+      <QuizPanel
+        cairnId={data.cairn.id}
+        readySources={sources.filter((s) => s.status === 'ready').length}
+      />
+    {/key}
+  </div>
 {/if}
 
 {#if isOwner}

@@ -534,7 +534,8 @@ a {
 }
 
 .icon-button:hover,
-.icon-button[aria-expanded='true'] {
+.icon-button[aria-expanded='true'],
+.icon-button[aria-pressed='true'] {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
 }
@@ -570,13 +571,13 @@ a {
     0 16px 40px rgb(0 0 0 / 0.12);
 }
 
-.panel .sources-header h2,
+.sources-header h2,
 .panel .share h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
 }
 
-.panel .sources {
+.sources-view .sources {
   margin-bottom: 0.75rem;
 }
 
