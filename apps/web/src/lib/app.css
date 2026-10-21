@@ -871,6 +871,161 @@ button.cite.active {
   text-align: left;
 }
 
+.mode-switch {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem;
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.mode-switch button {
+  padding: 0.35rem 1rem;
+  border: none;
+  border-radius: 10px;
+  color: var(--muted);
+}
+
+.mode-switch button[aria-selected='true'] {
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.quiz {
+  margin-bottom: 2rem;
+}
+
+.quiz button.link:hover {
+  color: var(--accent);
+}
+
+.quiz .actions {
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.quiz-setup > p {
+  margin: 0 0 1rem;
+}
+
+.quiz-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.quiz-card .badge.seen {
+  margin: 0 0 0.5rem;
+}
+
+.quiz-question {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.option {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+  line-height: 1.4;
+}
+
+.option:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.option:disabled {
+  opacity: 1;
+}
+
+.option .letter {
+  flex: none;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.option.picked {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.option.right {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.option.right .letter {
+  color: var(--accent);
+}
+
+.option.wrong {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+}
+
+.option.wrong .letter {
+  color: var(--error);
+}
+
+.verdict {
+  margin-top: 1rem;
+  padding: 0.875rem 1.125rem;
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.verdict p {
+  margin: 0.375rem 0 0;
+  line-height: 1.5;
+}
+
+.verdict.correct {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.verdict.correct strong {
+  color: var(--accent);
+}
+
+.verdict.wrong {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
+.verdict.wrong strong {
+  color: var(--error);
+}
+
+.quiz-card .actions {
+  margin-top: 1rem;
+}
+
+.quiz-summary h2 {
+  margin: 0 0 0.5rem;
+}
+
+.score-big {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+}
+
 .badge {
   display: inline-block;
   margin-left: 0.5rem;

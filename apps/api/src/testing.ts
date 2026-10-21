@@ -37,6 +37,8 @@ export function createTestApp() {
     SSE_HEARTBEAT_MS: '50',
     QUERY_RATE_LIMIT: '3',
     SHARE_QUERY_RATE_LIMIT: '5',
+    // Background writes would take scripted answers meant for the test.
+    QUIZ_PREFETCH: '0',
   });
   const admin = createDb(env.adminUrl);
   const db = createDb(config.databaseUrl);

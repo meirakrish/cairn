@@ -6,6 +6,7 @@ export * from './errors';
 export * from './events';
 export * from './ingest';
 export * from './ingest-queue';
+export * from './quiz';
 export * from './retrieval';
 export * from './shares';
 export * from './sources';
