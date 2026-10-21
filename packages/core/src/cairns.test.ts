@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from './cairns';
 import { cairns, withUser } from './db';
+import { ShareService } from './shares';
 import { createTestDbs, createUser, resetDb } from './testing';
 
 const { admin, app } = createTestDbs();
@@ -99,5 +100,26 @@ describe('RLS on cairns', () => {
     );
 
     expect(await pgError(update)).toMatch(/row-level security/);
+  });
+});
+
+describe('access on cairns', () => {
+  it('lists owned and shared cairns, each with the caller’s role and mode', async () => {
+    const owner = await createUser(admin.db);
+    const guest = await createUser(admin.db);
+    const shared = await service.create(owner.id, { name: 'Shared' });
+    const own = await service.create(guest.id, { name: 'Own' });
+    const share = await new ShareService(app.db).shareWithEmail(owner.id, shared.id, guest.email, {
+      role: 'viewer',
+      visibility: 'sealed',
+    });
+
+    expect((await service.list(guest.id)).map((c) => [c.name, c.access])).toEqual([
+      ['Own', { role: 'owner', visibility: 'cited', shareId: null }],
+      ['Shared', { role: 'viewer', visibility: 'sealed', shareId: share.id }],
+    ]);
+    expect((await service.get(guest.id, shared.id))?.access.role).toBe('viewer');
+    expect((await service.get(guest.id, own.id))?.access.role).toBe('owner');
+    expect((await service.list(owner.id)).map((c) => c.name)).toEqual(['Shared']);
   });
 });

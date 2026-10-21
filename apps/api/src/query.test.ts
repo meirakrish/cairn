@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { AnswerEvent } from '@cairn/shared';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { APP_ORIGIN, createTestApp } from './testing';
 
 const t = createTestApp();
@@ -15,6 +15,7 @@ beforeAll(async () => {
   base = `http://localhost:${(server.address() as AddressInfo).port}`;
 });
 beforeEach(() => t.reset());
+afterEach(() => vi.restoreAllMocks());
 afterAll(async () => {
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
@@ -97,6 +98,8 @@ describe('POST /api/cairns/:id/query', () => {
   it('rate-limits questions per user', async () => {
     const { cookie, cairnId } = await signedInWithChunks(['x']);
     t.script({ stream: Array.from({ length: 5 }, () => ['ok']) });
+    // Rate limits use fixed one-minute windows; don't let the test straddle two.
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now());
 
     for (let i = 0; i < t.config.queryRateLimit; i++) {
       expect((await ask(cairnId, cookie, `q${i}`)).res.status).toBe(200);

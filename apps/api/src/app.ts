@@ -1,9 +1,13 @@
 import {
   AnswerService,
   CairnService,
+  ConflictError,
+  ForbiddenError,
+  InvalidInputError,
   NotFoundError,
   RetrievalService,
   redisSourcePublisher,
+  ShareService,
   SourceService,
   type Db,
   type IngestQueue,
@@ -21,6 +25,7 @@ import { cairnsRouter } from './cairns';
 import type { EventHub } from './event-hub';
 import { eventsRouter } from './events';
 import { queryRouter } from './query';
+import { shareLinksRouter, sharesRouter } from './shares';
 import type { Config } from './config';
 import { HttpError } from './errors';
 
@@ -57,6 +62,9 @@ export function createApp({ config, db, redis, storage, ingest, hub, embedder, l
   app.use('/api/cairns', eventsRouter({ config, cairns, sources, sessions, hub }));
   app.use('/api/cairns', queryRouter({ config, cairns, answers, redis }));
   app.use('/api/cairns', cairnsRouter({ config, cairns, sources, storage, ingest }));
+  const shares = new ShareService(db);
+  app.use('/api/cairns', sharesRouter({ shares }));
+  app.use('/api/share-links', shareLinksRouter({ shares }));
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'not found' });
@@ -79,6 +87,19 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   }
   if (err instanceof NotFoundError) {
     res.status(404).json({ error: err.message });
+    return;
+  }
+  // Core's errors carry messages meant for the caller.
+  if (err instanceof ForbiddenError) {
+    res.status(403).json({ error: err.message });
+    return;
+  }
+  if (err instanceof ConflictError) {
+    res.status(409).json({ error: err.message });
+    return;
+  }
+  if (err instanceof InvalidInputError) {
+    res.status(400).json({ error: err.message });
     return;
   }
   if (err instanceof z.ZodError) {

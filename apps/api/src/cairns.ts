@@ -1,8 +1,9 @@
 import {
   NotFoundError,
   sourceDto,
-  type Cairn as CairnRow,
+  type CairnAccess,
   type CairnService,
+  type CairnWithAccess,
   type IngestQueue,
   type ObjectStore,
   type SourceService,
@@ -22,8 +23,33 @@ import type { Config } from './config';
 import { HttpError } from './errors';
 import { cleanFilename, detectKind, readUpload } from './upload';
 
-function toDto({ id, name, description, embedModel, createdAt }: CairnRow): Cairn {
-  return { id, name, description, embedModel, createdAt: createdAt.toISOString() };
+function toDto({ id, name, description, embedModel, createdAt, access }: CairnWithAccess): Cairn {
+  return {
+    id,
+    name,
+    description,
+    embedModel,
+    createdAt: createdAt.toISOString(),
+    role: access.role,
+    visibility: access.visibility,
+  };
+}
+
+/** The caller's access to a cairn; a cairn they can't see is a 404. */
+export async function requireAccess(
+  cairns: CairnService,
+  userId: string,
+  cairnId: string,
+): Promise<CairnAccess> {
+  const cairn = await cairns.get(userId, cairnId);
+  if (!cairn) throw new NotFoundError('cairn');
+  return cairn.access;
+}
+
+/** Sealed callers never see sources: not the list, not their status stream. */
+export function requireCited(access: CairnAccess): void {
+  if (access.visibility === 'sealed')
+    throw new HttpError(403, 'sources are not shown for this cairn');
 }
 
 // A uuid route param. Malformed ids are ids that don't exist (and would otherwise be a Postgres cast error).
@@ -67,7 +93,7 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
   router.get('/:id/sources', async (req, res) => {
     const userId = req.user!.id;
     const cairnId = idParam(req, 'id', 'cairn');
-    if (!(await cairns.get(userId, cairnId))) throw new NotFoundError('cairn');
+    requireCited(await requireAccess(cairns, userId, cairnId));
     const body: ListSourcesResponse = {
       sources: (await sources.list(userId, cairnId)).map(sourceDto),
     };
@@ -78,7 +104,8 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
   router.post('/:id/sources', async (req, res) => {
     const userId = req.user!.id;
     const cairnId = idParam(req, 'id', 'cairn');
-    if (!(await cairns.get(userId, cairnId))) throw new NotFoundError('cairn');
+    const { role } = await requireAccess(cairns, userId, cairnId);
+    if (role === 'viewer') throw new HttpError(403, 'only the owner and editors can add sources');
 
     const upload = await readUpload(req, config.uploadMaxBytes);
     if (upload.data.length === 0) throw new HttpError(400, 'the file is empty');
@@ -111,6 +138,9 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
   router.delete('/:id/sources/:sourceId', async (req, res) => {
     const userId = req.user!.id;
     const cairnId = idParam(req, 'id', 'cairn');
+    const access = await requireAccess(cairns, userId, cairnId);
+    requireCited(access);
+    if (access.role !== 'owner') throw new HttpError(403, 'only the owner can delete sources');
     const source = await sources.get(userId, idParam(req, 'sourceId', 'source'));
     if (!source || source.cairnId !== cairnId) throw new NotFoundError('source');
 

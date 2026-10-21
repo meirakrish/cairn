@@ -135,23 +135,33 @@ Google sign-in is handled entirely by the api (authorization code flow with PKCE
 
 All routes are under `/api` and return JSON. Errors are `{ "error": "..." }`; validation errors (400) also carry `issues`.
 
-| Route                                      | Auth | What it does                                                                                                         |
-| ------------------------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`                          | no   | Liveness                                                                                                             |
-| `GET /api/auth/me`                         | yes  | Current user                                                                                                         |
-| `POST /api/auth/logout`                    | yes  | End the session                                                                                                      |
-| `GET /api/cairns`                          | yes  | Your cairns, newest first                                                                                            |
-| `POST /api/cairns`                         | yes  | Create a cairn: `{ name, description? }` → 201                                                                       |
-| `GET /api/cairns/:id`                      | yes  | One cairn                                                                                                            |
-| `GET /api/cairns/:id/sources`              | yes  | The cairn's sources (files), newest first, with status                                                               |
-| `POST /api/cairns/:id/sources`             | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async                                           |
-| `DELETE /api/cairns/:id/sources/:sourceId` | yes  | Delete a source, its chunks and its stored file → 204                                                                |
-| `GET /api/cairns/:id/events`               | yes  | Live source updates (Server-Sent Events): a snapshot, then each change                                               |
-| `POST /api/cairns/:id/query`               | yes  | Ask a question `{ question }` (≤ 1,000 chars, 20/min): the answer as SSE — passages, text pieces, then cited numbers |
+| Route                                      | Auth | What it does                                                                                                              |
+| ------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                          | no   | Liveness                                                                                                                  |
+| `GET /api/auth/me`                         | yes  | Current user                                                                                                              |
+| `POST /api/auth/logout`                    | yes  | End the session                                                                                                           |
+| `GET /api/cairns`                          | yes  | Your cairns and those shared with you, newest first, each with your `role` and `visibility`                               |
+| `POST /api/cairns`                         | yes  | Create a cairn: `{ name, description? }` → 201                                                                            |
+| `GET /api/cairns/:id`                      | yes  | One cairn                                                                                                                 |
+| `GET /api/cairns/:id/sources`              | yes  | The cairn's sources (files), newest first, with status                                                                    |
+| `POST /api/cairns/:id/sources`             | yes  | Upload one file (multipart field `file`, 25 MB max) → 202, processed async                                                |
+| `DELETE /api/cairns/:id/sources/:sourceId` | yes  | Delete a source, its chunks and its stored file → 204                                                                     |
+| `GET /api/cairns/:id/events`               | yes  | Live source updates (Server-Sent Events): a snapshot, then each change                                                    |
+| `POST /api/cairns/:id/query`               | yes  | Ask a question `{ question }` (≤ 1,000 chars, 20/min): the answer as SSE — passages, text pieces, then cited numbers      |
+| `GET /api/cairns/:id/shares`               | yes  | The cairn's live shares, with who opened each link (owner only)                                                           |
+| `POST /api/cairns/:id/shares`              | yes  | Share: `{ kind: 'email', email, role, visibility, expiresAt? }` or `{ kind: 'link', … }` → 201; links return `token` once |
+| `DELETE /api/cairns/:id/shares/:shareId`   | yes  | Revoke a share → 204 (owner only)                                                                                         |
+| `POST /api/share-links/:token/redeem`      | yes  | Open a share link → `{ cairnId }`; unknown, revoked or expired links are 404                                              |
 
 Request and response shapes are the zod schemas in `packages/shared`. Unknown, malformed or other users' ids are all 404.
 
 Uploads accept text, Markdown and PDF. The type comes from the file's bytes (a PDF signature, otherwise valid UTF-8 text; `.md`/`.markdown` makes it Markdown), not from the browser's Content-Type. Anything else is 415, too large is 413.
+
+## Sharing
+
+A cairn is shared with a Google account by email, or by a link that the recipient opens while signed in. A share has a `role` (`viewer` asks questions, `editor` also adds sources) and a `visibility` (`cited` shows sources, `sealed` hides them; editors are always cited). Only the owner manages shares, deletes sources or changes the cairn. Revoking or expiring a share ends access at once. The database decides access: `cairn_access()` (used by RLS and by `ShareService.access`) returns the caller's best active grant.
+
+Sealed callers get 403 on the source list, uploads/deletes and the events stream. Questions are rate-limited per user (`QUERY_RATE_LIMIT`) and, through a share, per share across everyone using it (`SHARE_QUERY_RATE_LIMIT`, default 60/min).
 
 ## Tests
 

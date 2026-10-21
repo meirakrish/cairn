@@ -1,9 +1,9 @@
 import type { AnswerEvent, CitedPassage } from '@cairn/shared';
 import type { LlmClient } from '@meirakrish/llm-kit';
-import { eq } from 'drizzle-orm';
-import { cairns, queryLog, withUser, type Db } from '../db';
-import { NotFoundError } from '../errors';
+import { queryLog, withUser, type Db } from '../db';
+import { ForbiddenError, NotFoundError } from '../errors';
 import type { RetrievalService } from '../retrieval';
+import { cairnAccess } from '../shares';
 import { buildMessages, citedNumbers, type PromptOptions } from './prompt';
 
 export interface AnswerOptions extends PromptOptions {
@@ -14,8 +14,8 @@ export const NOTHING_FOUND = "I couldn't find anything about that in this cairn'
 
 /**
  * Answers a question about one cairn: retrieve passages, stream the model's answer, report citations.
- * Runs as the user (RLS): a cairn they can't see is a NotFoundError. Logs the question to query_log
- * when the answer completes.
+ * Runs as the user (RLS): a cairn they can't see is a NotFoundError. Logs the question to query_log,
+ * with the share it came through, when the answer completes.
  */
 export class AnswerService {
   constructor(
@@ -31,10 +31,10 @@ export class AnswerService {
     opts: AnswerOptions = {},
   ): AsyncGenerator<AnswerEvent> {
     const started = Date.now();
-    const [cairn] = await withUser(this.db, userId, (tx) =>
-      tx.select({ id: cairns.id }).from(cairns).where(eq(cairns.id, cairnId)),
-    );
-    if (!cairn) throw new NotFoundError('cairn');
+    const access = await withUser(this.db, userId, (tx) => cairnAccess(tx, cairnId));
+    if (!access) throw new NotFoundError('cairn');
+    // Sealed answers (no passages, no citations) come in Phase 4 step 4; until then, refuse.
+    if (access.visibility === 'sealed') throw new ForbiddenError('sealed answers are not ready');
     const chunks = await this.retrieval.search(userId, cairnId, question, { signal: opts.signal });
     const passages: CitedPassage[] = chunks.map((c, i) => ({
       n: i + 1,
@@ -62,9 +62,14 @@ export class AnswerService {
 
     const latencyMs = Date.now() - started;
     await withUser(this.db, userId, (tx) =>
-      tx
-        .insert(queryLog)
-        .values({ cairnId, userId, question, chunkCount: chunks.length, latencyMs }),
+      tx.insert(queryLog).values({
+        cairnId,
+        userId,
+        shareId: access.shareId,
+        question,
+        chunkCount: chunks.length,
+        latencyMs,
+      }),
     );
     yield { type: 'done', cited: citedNumbers(text, passages.length), latencyMs };
   }

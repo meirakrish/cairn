@@ -3,8 +3,9 @@ import { fakeEmbedder, scriptedLlm } from '@meirakrish/llm-kit/testing';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from '../cairns';
 import { EMBEDDING_DIMENSIONS, queryLog } from '../db';
-import { NotFoundError } from '../errors';
+import { ForbiddenError, NotFoundError } from '../errors';
 import { RetrievalService } from '../retrieval';
+import { ShareService } from '../shares';
 import { SourceService } from '../sources';
 import { createTestDbs, createUser, resetDb } from '../testing';
 import { AnswerService, NOTHING_FOUND } from './service';
@@ -108,5 +109,41 @@ describe('AnswerService.answer', () => {
 
     await expect(collect(answers.answer(user.id, cairn.id, 'q'))).rejects.toThrow('model down');
     expect(await admin.db.select().from(queryLog)).toEqual([]);
+  });
+
+  it('answers a cited grantee and logs the share the question came through', async () => {
+    const { user, cairn } = await cairnWith(['Cairns mark trails.']);
+    const guest = await createUser(admin.db);
+    const share = await new ShareService(app.db).shareWithEmail(user.id, cairn.id, guest.email, {
+      role: 'viewer',
+      visibility: 'cited',
+    });
+    const answers = new AnswerService(
+      app.db,
+      retrieval,
+      scriptedLlm({ stream: [['Trails [1].']] }),
+    );
+
+    const events = await collect(answers.answer(guest.id, cairn.id, 'What do cairns do?'));
+    expect(events.at(-1)).toMatchObject({ type: 'done', cited: [1] });
+    expect(await admin.db.select().from(queryLog)).toMatchObject([
+      { userId: guest.id, shareId: share.id },
+    ]);
+  });
+
+  it('refuses sealed grantees until sealed answers exist', async () => {
+    const { user, cairn } = await cairnWith(['Cairns mark trails.']);
+    const guest = await createUser(admin.db);
+    await new ShareService(app.db).shareWithEmail(user.id, cairn.id, guest.email, {
+      role: 'viewer',
+      visibility: 'sealed',
+    });
+    const llm = scriptedLlm();
+    const answers = new AnswerService(app.db, retrieval, llm);
+
+    await expect(collect(answers.answer(guest.id, cairn.id, 'q'))).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(llm.calls).toEqual([]);
   });
 });

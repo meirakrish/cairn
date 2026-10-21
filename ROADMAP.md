@@ -182,8 +182,8 @@ Plan decisions (agreed 2026-10-20):
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------- |
 | 1    | Schema + RLS: `shares`, `share_redemptions`, `query_log.share_id`; `cairn_access()` / `redeem_share_link()`; per-role policies; RLS tests                       | done   | `phase4/step1-shares`        |
 | 2    | core `ShareService` + access policy: `access(userId, cairnId)` → role/visibility/shareId; create/list/revoke; link tokens (32 random bytes, hashed)             | done   | `phase4/step2-share-service` |
-| 3    | api: `/api/cairns/:id/shares` (owner), `POST /api/share-links/:token/redeem`, cairn list with role + mode, sealed → 403 on sources/events, per-share rate limit | next   |                              |
-| 4    | Sealed answers: no source details in the prompt, citation-free event types, synthesize-don't-quote prompt, verbatim 12-word overlap → "…"                       | todo   |                              |
+| 3    | api: `/api/cairns/:id/shares` (owner), `POST /api/share-links/:token/redeem`, cairn list with role + mode, sealed → 403 on sources/events, per-share rate limit | done   | `phase4/step3-share-api`     |
+| 4    | Sealed answers: no source details in the prompt, citation-free event types, synthesize-don't-quote prompt, verbatim 12-word overlap → "…"                       | next   |                              |
 | 5    | Web: Share dialog (email, link, role, mode, revoke, copy), `/s/:token` sign-in + redeem, shared badge, sealed view (Ask only, "sources are not shown")          | todo   |                              |
 
 Plan decisions (agreed 2026-10-21):
@@ -208,15 +208,25 @@ Step 2 as built:
 - Owner-only methods: no access → `NotFoundError('cairn')`, a grantee → `ForbiddenError`. Sealed editors and past expiries → `InvalidInputError`. New errors in `src/errors.ts`; the api maps them in step 3 (403/409/400).
 - 13 tests in `src/shares.test.ts`.
 
+Step 3 as built:
+
+- core: `CairnService.get/list/create` return `CairnWithAccess` (`access: { role, visibility, shareId }`, from `inner join lateral cairn_access(cairns.id) a on true`; drizzle rejects a raw-SQL `from`). `AnswerService` reads `cairnAccess`, logs `share_id`, and throws `ForbiddenError` for sealed callers until step 4.
+- shared: `CairnRole`, `ShareRole`, `Visibility`; `Cairn` gains `role` + `visibility`; `Share`, `CreateShareRequest` (discriminated on `kind`: `email` | `link`; `expiresAt` ISO with offset), `CreateShareResponse` (`token` only for links), `ListSharesResponse`, `RedeemShareLinkResponse`.
+- api `src/shares.ts`: `GET/POST /api/cairns/:id/shares`, `DELETE /api/cairns/:id/shares/:shareId`, `POST /api/share-links/:token/redeem` (404 for anything not redeemable). Error handler maps `ForbiddenError` 403, `ConflictError` 409, `InvalidInputError` 400.
+- api `src/cairns.ts`: `requireAccess()` (404) and `requireCited()` (403 "sources are not shown for this cairn"). Sources list and events: cited only; upload: owner/editor; delete source: owner. The events heartbeat ends the stream when access is lost or turns sealed.
+- Query: sealed → 403 (until step 4); rate limit `query:user:<id>` (`QUERY_RATE_LIMIT`) then, for share callers, `query:share:<id>` (`SHARE_QUERY_RATE_LIMIT`, default 60). The share counter isn't bumped when the user limit already refused.
+- Rate-limit tests freeze `Date.now` (fixed one-minute windows made them flaky across a minute boundary; seen once).
+- 9 api tests in `src/shares.test.ts`, plus events (share turns sealed → stream ends), answer and cairn tests.
+
 ## Current layout
 
 ```
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; routes `/` and `/cairns/[id]`, `+error.svelte`; src/lib/api.ts (incl. XHR upload, askQuestion), src/lib/answer.ts, src/lib/AskPanel.svelte, src/lib/app.css
 apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry vs fail), index.ts; dev with tsx watch, build with tsdown
-apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/query.ts (answers, SSE) + src/rate-limit.ts; src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
+apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/query.ts (answers, SSE) + src/rate-limit.ts; src/shares.ts (share routes, link redeem); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/eval    retrieval eval: corpus/, questions.json, src/run.ts (`pnpm eval`)
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/answer/ (AnswerService, buildMessages, citedNumbers); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/shares.ts (ShareService, cairnAccess, hashShareToken); src/answer/ (AnswerService, buildMessages, citedNumbers); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -274,4 +284,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 4 step 3 (api).** Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 4 step 4 (sealed answers).** Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
