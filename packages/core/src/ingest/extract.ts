@@ -1,10 +1,11 @@
-import { extractText, getDocumentProxy, renderPageAsImage } from 'unpdf';
+import { getDocumentProxy, renderPageAsImage } from 'unpdf';
 import type { ChunkLocation, SourceKind } from '../db';
 import { DEFAULT_CHUNKING } from './chunk';
 import { csvSegments } from './csv';
 import { PermanentIngestError } from './errors';
 import { readHtml } from './html';
 import { jsonSegments } from './json';
+import { pageText } from './pdf-text';
 
 /** A run of text with one location: a whole text file, a Markdown or web page section, a PDF page, CSV rows or JSON records. */
 export interface Segment {
@@ -146,8 +147,8 @@ async function extractPdf(
         `the PDF has ${pdf.numPages} pages; the limit is ${EXTRACT_LIMITS.maxPdfPages}`,
       );
     }
-    const { text } = await withTimeout(
-      extractText(pdf, { mergePages: false }),
+    const text = await withTimeout(
+      Promise.all(Array.from({ length: pdf.numPages }, (_, i) => readPage(pdf!, i + 1))),
       EXTRACT_LIMITS.pdfTimeoutMs,
       'the PDF took too long to read',
     );
@@ -185,6 +186,17 @@ async function extractPdf(
 }
 
 type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
+
+/** A page's text layer, with right-to-left lines in reading order (see pageText). */
+async function readPage(pdf: PdfDocument, pageNumber: number): Promise<string> {
+  const page = await pdf.getPage(pageNumber);
+  const content = await page.getTextContent();
+  const { width } = page.getViewport({ scale: 1 });
+  return pageText(
+    content.items.filter((item) => 'str' in item),
+    width,
+  );
+}
 
 /** A page as PNG, its longest side EXTRACT_LIMITS.renderSide pixels. */
 async function renderPage(pdf: PdfDocument, pageNumber: number): Promise<Uint8Array> {

@@ -21,6 +21,29 @@ describe('extract', () => {
     ]);
   });
 
+  it('reads Hebrew PDFs in reading order', async () => {
+    // Older PDF tools write Hebrew in visual order (left to right on the page), sometimes a word
+    // at a time from the right. Each character is 7.2pt wide.
+    const visual = (s: string) => [...s].reverse().join('');
+    const runs = [
+      { x: 300, y: 700, text: visual('שלום עולם') },
+      { x: 500, y: 680, text: visual('המועד') },
+      { x: 449.6, y: 680, text: visual('האחרון') },
+      { x: 406.4, y: 680, text: visual('להגשה') },
+      { x: 300, y: 660, text: `${visual('עכשיו')} Cairn ${visual('להתקין את')}` },
+      { x: 500, y: 640, text: visual('בשעה') },
+      { x: 456.8, y: 640, text: '17:30' },
+      { x: 413.6, y: 640, text: visual('בדיוק') },
+    ];
+    const [page] = await extract('pdf', makePdf([{ runs }]));
+    expect(page!.text.split('\n')).toEqual([
+      'שלום עולם',
+      'המועד האחרון להגשה',
+      'להתקין את Cairn עכשיו',
+      'בשעה 17:30 בדיוק',
+    ]);
+  });
+
   it('fails clearly on PDFs without text and on damaged PDFs', async () => {
     await expect(extract('pdf', makePdf(['', '']))).rejects.toThrow(
       /scanned PDFs need a vision model/,
