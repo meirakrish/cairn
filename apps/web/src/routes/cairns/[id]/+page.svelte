@@ -41,6 +41,7 @@
   let refreshing = $state<string | null>(null);
   let rowErrors = $state<Record<string, string>>({});
   let fileInput = $state<HTMLInputElement>();
+  let addingLinks = $state(false);
   let editDialog = $state<CairnDialog>();
   // Ask questions, or be quizzed (callers who can see sources only; the api enforces it too).
   let mode = $state<'ask' | 'quiz'>('ask');
@@ -240,20 +241,33 @@
   </div>
 
   {#if !sealed}
-    <Popover label="Files" count={live === 'connecting' ? undefined : sources.length}>
+    <Popover label="Sources" count={live === 'connecting' ? undefined : sources.length}>
       {#snippet icon()}
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-          ><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path
-            d="M14 3v6h6"
+          ><ellipse cx="12" cy="5.5" rx="7.5" ry="3" /><path
+            d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"
           /></svg
         >
       {/snippet}
       <div class="sources-header">
-        <h2>Files</h2>
+        <h2>Sources</h2>
         <span class="live {live}" title="Status updates">{LIVE_LABEL[live]}</span>
       </div>
+      {#if canUpload}
+        <div class="add-sources">
+          <button type="button" onclick={() => fileInput?.click()}>Add files</button>
+          <button
+            type="button"
+            aria-expanded={addingLinks}
+            onclick={() => (addingLinks = !addingLinks)}>Add web pages</button
+          >
+        </div>
+        {#if addingLinks}<AddLinks cairnId={data.cairn.id} onadded={upsert} />{/if}
+      {/if}
       {#if sources.length === 0 && live === 'live'}
-        <p class="muted">No files yet.{canUpload ? ' Add some to build this cairn.' : ''}</p>
+        <p class="muted">
+          Nothing here yet.{canUpload ? ' Add files or web pages to build this cairn.' : ''}
+        </p>
       {:else}
         <ul class="sources">
           {#each sources as source (source.id)}
@@ -327,19 +341,6 @@
 
   {#if !sealed}
     {#if canUpload}
-      <button
-        type="button"
-        class="icon-button"
-        aria-label="Attach files"
-        title="Attach files"
-        onclick={() => fileInput?.click()}
-      >
-        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
-          ><path
-            d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
-          /></svg
-        >
-      </button>
       <input
         bind:this={fileInput}
         type="file"
@@ -352,19 +353,6 @@
         }}
       />
     {/if}
-  {/if}
-
-  {#if canUpload && !sealed}
-    <Popover label="Add web pages">
-      {#snippet icon()}
-        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
-          ><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path
-            d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"
-          /></svg
-        >
-      {/snippet}
-      <AddLinks cairnId={data.cairn.id} onadded={upsert} />
-    </Popover>
   {/if}
 
   {#if isOwner}
