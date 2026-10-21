@@ -200,4 +200,38 @@ describe('GET /api/cairns/:id/events', () => {
       .set('Cookie', guestCookie)
       .expect(403);
   });
+
+  it('allows 3 open streams per user; a closed one frees its slot', async () => {
+    const { user, cookie, cairnId } = await signedInWithCairn();
+    const streams = [];
+    for (let i = 0; i < t.config.sseMaxStreamsPerUser; i++) {
+      const s = await openStream(cairnId, cookie);
+      expect(s.res.status).toBe(200);
+      await s.next();
+      streams.push(s);
+    }
+
+    const refused = await request(t.app).get(`/api/cairns/${cairnId}/events`).set('Cookie', cookie);
+    expect(refused.status).toBe(429);
+    expect(refused.body.error).toMatch(/too many open live views/);
+    expect(refused.headers['retry-after']).toMatch(/^\d+$/);
+    // Another user is unaffected.
+    const other = await signedInWithCairn();
+    const theirs = await openStream(other.cairnId, other.cookie);
+    expect(theirs.res.status).toBe(200);
+    theirs.close();
+
+    streams[0]!.close();
+    let reopened: Awaited<ReturnType<typeof openStream>> | undefined;
+    const deadline = Date.now() + 2000;
+    while (!reopened && Date.now() < deadline) {
+      const s = await openStream(cairnId, cookie);
+      if (s.res.status === 200) reopened = s;
+      else await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(reopened).toBeDefined();
+    expect(await t.redis.zcard(`sse:streams:${user.id}`)).toBe(3);
+    for (const s of [...streams.slice(1), reopened!]) s.close();
+    await eventually(() => t.hub.channels.length === 0);
+  });
 });

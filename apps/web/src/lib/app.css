@@ -544,3 +544,8 @@ h1 + .badge {
 .shares .row > :last-child {
   margin-left: auto;
 }
+
+.live.busy {
+  color: var(--muted);
+  font-style: italic;
+}

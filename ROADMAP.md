@@ -176,7 +176,7 @@ Plan decisions (agreed 2026-10-20):
 - Eval corpus in English only for now (user's call), from the repo's docs plus public-domain texts incl. a PDF.
 - Chat model `qwen3.5:9b`, thinking off, 16k context; check it fits next to the embedding model.
 
-## Phase 4: sharing (in progress: step 5 awaiting browser check)
+## Phase 4: sharing (done)
 
 | Step | What                                                                                                                                                            | Status | Branch                       |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------- |
@@ -234,14 +234,38 @@ Step 5 as built:
 - `/s/[token]`: signed out → "A cairn was shared with you" + sign-in form with `returnTo=/s/<token>`; signed in → redeem and redirect to the cairn; 404 → "This link doesn't work".
 - api: `/api/auth/google/start?returnTo=` stored with the pending login in Redis, validated (same-site path, no `//` or `/\`, nothing under `/api`, ≤ 200 chars); the callback redirects there. Test covers good and bad values.
 - `askQuestion(cairnId, question, sealed, …)` parses `SealedAnswerEvent` for sealed cairns; AskPanel enables asking for sealed callers without a ready-files count (they can't see files).
-- Not yet checked in a browser (needs two Google accounts: share by email, open a link signed out, sealed vs cited, revoke while open).
+- Merged (PRs #18–#22) on 2026-10-21.
+
+## Phase 5: more file types (in progress)
+
+| Step | What                                                                                                           | Status | Branch                    |
+| ---- | -------------------------------------------------------------------------------------------------------------- | ------ | ------------------------- |
+| 1    | Cap open event streams at 3 per user (Redis lease set, 429 above it); web shows why live updates stopped       | done   | `phase5/step1-stream-cap` |
+| 2    | CSV ingest: delimiter sniffing, rows as `column: value` lines, header repeated per chunk, location = row range | next   |                           |
+| 3    | JSON / JSONL ingest: records as `path: value` lines, location = JSON path                                      | todo   |                           |
+| 4    | Images (PNG, JPEG, WebP): resize, transcribe + describe with `qwen3.5:9b` vision, then chunk and embed         | todo   |                           |
+| 5    | Scanned PDFs: render pages without a text layer and transcribe them with the vision model                      | todo   |                           |
+| 6    | Web (new kinds, locations; no image previews for sealed callers) and eval questions for each new type          | todo   |                           |
+
+Plan decisions (agreed 2026-10-21):
+
+- Images need no new model: `qwen3.5:9b` reports the `vision` capability in Ollama; llm-kit passes LangChain messages to ChatOllama, which accepts image content blocks (to confirm live in step 4).
+- Image and scan text is untrusted input, like documents.
+- Aggregates over a whole table ("average of column X") are out of scope: retrieval finds rows, it doesn't compute.
+
+Step 1 as built:
+
+- api `src/stream-limit.ts`: `StreamLimiter` keeps a Redis sorted set `sse:streams:<userId>` of stream ids scored by last renewal. `acquire()` is one Lua script (drop leases older than `leaseMs`, refuse at the limit, add), so concurrent opens can't overshoot; `renew()` (Lua, `ZADD XX`) on every heartbeat; `release()` idempotent. Lease = 3 heartbeats (75 s), so a crashed process can't lock a user out for long.
+- `GET /api/cairns/:id/events` acquires after the access checks: 429 `too many open live views; close another Cairn tab` + `Retry-After` (one heartbeat). `SSE_MAX_STREAMS_PER_USER`, default 3.
+- `close()` now catches `unsubscribe` and `release` failures (Redis gone at shutdown); found as an unhandled rejection in the new test. Also: ioredis `multi()` leaves per-command promises that reject unhandled when the connection drops, so `renew` is a script.
+- Web: the cairn page reads the stream with `fetch` + `sseData` instead of `EventSource` (which hides the status); 429 shows "Paused: Cairn is open in too many tabs" and retries after `Retry-After`; other failures back off 2 s → 30 s as before.
 
 ## Current layout
 
 ```
 apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; routes `/`, `/cairns/[id]`, `/s/[token]` (share links), `+error.svelte`; src/lib/api.ts (incl. XHR upload, askQuestion, shares), src/lib/answer.ts, src/lib/AskPanel.svelte, src/lib/SharePanel.svelte, src/lib/share.ts, src/lib/app.css
 apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry vs fail), index.ts; dev with tsx watch, build with tsdown
-apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/query.ts (answers, SSE) + src/rate-limit.ts; src/shares.ts (share routes, link redeem); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
+apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/query.ts (answers, SSE) + src/rate-limit.ts; src/shares.ts (share routes, link redeem); src/stream-limit.ts (StreamLimiter); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/eval    retrieval eval: corpus/, questions.json, src/run.ts (`pnpm eval`)
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
 packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/shares.ts (ShareService, cairnAccess, hashShareToken); src/answer/ (AnswerService, buildMessages, citedNumbers); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
@@ -281,9 +305,8 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Worker shutdown takes a few seconds: `worker.close()` waits for BullMQ's blocking Redis poll to return.
 - pdf.js 5 dropped `isEvalSupported`; close documents with `pdf.loadingTask.destroy()` (the proxy has no `destroy`).
 - tsx `-e` scripts compile to CJS: wrap top-level `await` in an async IIFE, and run them from a package that depends on what they import (e.g. `packages/core` for drizzle).
-- No limit yet on open event streams per user; add one (Redis counter) before the app is public.
 - `qwen3.5:9b` failed with NVIDIA driver 610.88 (`CUDA error: a PTX JIT compilation failed`, then Ollama stuck until restarted). Fixed by updating to 617.42.
-- The "models swap" problem was a crash, not eviction: Ollama said the chat model fits next to the embedding model, then its llama-server died with `GGML_ASSERT(ctx->mem_buffer != NULL)` (exit 0xc0000409) because Windows ran out of commit (no page file; limit = 31.9 GB RAM; the chat model commits ~8.5 GB, the embedding model ~2.2 GB, other apps ~19 GB). With the browser closed both stay loaded. Lasting fix: enable a page file (System managed) on Windows. `OLLAMA_MAX_LOADED_MODELS=2` is set; `use_mmap: true` did not help.
+- The "models swap" problem was a crash, not eviction: Ollama said the chat model fits next to the embedding model, then its llama-server died with `GGML_ASSERT(ctx->mem_buffer != NULL)` (exit 0xc0000409) because Windows ran out of commit (no page file; limit = 31.9 GB RAM; the chat model commits ~8.5 GB, the embedding model ~2.2 GB, other apps ~19 GB). With the browser closed both stay loaded. Lasting fix: a page file on Windows (added by the user on 2026-10-21). `OLLAMA_MAX_LOADED_MODELS=2` is set; `use_mmap: true` did not help.
 - If Ollama is down when the api starts, llm-kit can't see that the model supports thinking and won't send `think: false`, so answers include thinking (slow). Restart the api once Ollama is up; fix belongs in llm-kit (probe lazily).
 - `drizzle-kit generate` asks interactively when policies are replaced ("created or renamed?"), which fails without a TTY. Run it under `script` and press Enter for each prompt ("create" is the default): `(for i in $(seq 30); do sleep 1.5; printf '\r'; done) | script -qfc "npx drizzle-kit generate --name X" /dev/null` in `packages/core`.
 - SQL functions (`cairn_access`, `redeem_share_link`) are hand-written in migrations; drizzle-kit doesn't track them, so changing one means a new custom migration (`CREATE OR REPLACE`).
@@ -304,4 +327,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: browser check of Phase 4 step 5, then Phase 4 is done.** Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 5 step 2 (CSV).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
