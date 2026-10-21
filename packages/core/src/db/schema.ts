@@ -94,7 +94,7 @@ export const EMBEDDING_DIMENSIONS = 1024;
 export const SOURCE_KINDS = ['text', 'markdown', 'pdf', 'csv', 'json', 'image', 'web'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
-export const SOURCE_STATUSES = ['pending', 'processing', 'ready', 'failed'] as const;
+export const SOURCE_STATUSES = ['pending', 'processing', 'ready', 'failed', 'rejected'] as const;
 export type SourceStatus = (typeof SOURCE_STATUSES)[number];
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));

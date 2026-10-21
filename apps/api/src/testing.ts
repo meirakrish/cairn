@@ -1,7 +1,9 @@
 import {
+  allowAll,
   createDb,
   EMBEDDING_DIMENSIONS,
   IngestQueue,
+  type Moderator,
   MemoryObjectStore,
   redisSourcePublisher,
   SourceService,
@@ -59,9 +61,22 @@ export function createTestApp() {
     stream: (...args) => llm.stream(...args),
     takeUsage: () => llm.takeUsage(),
   };
+  // Off unless a test sets one with t.moderate(...), so other tests' scripts aren't spent on it.
+  let moderator: Moderator = allowAll;
+  const moderatorProxy: Moderator = { check: (...args) => moderator.check(...args) };
 
   return {
-    app: createApp({ config, db: db.db, redis, storage, ingest, hub, embedder, llm: llmProxy }),
+    app: createApp({
+      config,
+      db: db.db,
+      redis,
+      storage,
+      ingest,
+      hub,
+      embedder,
+      llm: llmProxy,
+      moderator: moderatorProxy,
+    }),
     config,
     storage,
     ingest,
@@ -72,6 +87,10 @@ export function createTestApp() {
       llm = scriptedLlm(next);
       return llm;
     },
+    /** Sets the moderator the app uses next. */
+    moderate(next: Moderator) {
+      moderator = next;
+    },
     // Acts like the worker: changes made through it are published to the event streams.
     sources: new SourceService(db.db, { onChange: redisSourcePublisher(redis) }),
     admin: admin.db,
@@ -80,6 +99,7 @@ export function createTestApp() {
       await resetDb(admin.db);
       await redis.flushdb();
       storage.objects.clear();
+      moderator = allowAll;
     },
     createUser: (overrides?: Parameters<typeof createUser>[1]) => createUser(admin.db, overrides),
     // A Cookie header value for a signed-in user.

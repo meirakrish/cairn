@@ -103,4 +103,5 @@ quiz_attempts  (id, question_id, cairn_id, user_id, choice, verdict, answered_at
 - **Phase 3, query**: hybrid retrieval, cited answers streamed over SSE (llm-kit `stream()`), eval set.
 - **Phase 4, sharing**: email and link shares, cited and sealed.
 - **Quiz**: multiple-choice questions written from passages, kept in a per-cairn bank and reused, written ahead in the background; cited callers only.
+- **Moderation**: a chat model blocks clearly harmful content (sexual content, sexual content involving minors, graphic violence, hate, encouraging self-harm, instructions for serious harm) in sources, cairn names and questions; discussing those subjects is allowed. `MODERATION_ENABLED` turns it off.
 - **Later**: API keys, MCP server over `packages/core`. (Images and CSV/JSON were done in Phase 5.)

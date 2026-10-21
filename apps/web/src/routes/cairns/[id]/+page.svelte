@@ -229,6 +229,7 @@
     processing: 'Processing…',
     ready: 'Ready',
     failed: 'Failed',
+    rejected: 'Blocked',
   };
 
   function formatSize(bytes: number): string {
@@ -452,7 +453,7 @@
                 ? `${formatSize(source.size)} · `
                 : ''}added {dateFormat.format(new Date(source.createdAt))}</small
             >
-            {#if source.status === 'failed' && source.error}<p class="error">
+            {#if source.error}<p class="error">
                 {source.error}
               </p>{/if}
             {#if rowErrors[source.id]}<p class="error">{rowErrors[source.id]}</p>{/if}

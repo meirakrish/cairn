@@ -679,7 +679,8 @@ a {
   color: var(--accent);
 }
 
-.status.failed {
+.status.failed,
+.status.rejected {
   color: var(--error);
 }
 

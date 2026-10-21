@@ -12,6 +12,7 @@ import {
   SourceService,
   type Db,
   type IngestQueue,
+  type Moderator,
   type ObjectStore,
 } from '@cairn/core';
 import type { HealthResponse } from '@cairn/shared';
@@ -44,9 +45,21 @@ export interface AppDeps {
   embedder: Embedder;
   /** Writes the answers, quiz questions and grades. */
   llm: LlmClient;
+  /** Checks cairn names and questions (allowAll when MODERATION_ENABLED=false). */
+  moderator: Moderator;
 }
 
-export function createApp({ config, db, redis, storage, ingest, hub, embedder, llm }: AppDeps) {
+export function createApp({
+  config,
+  db,
+  redis,
+  storage,
+  ingest,
+  hub,
+  embedder,
+  llm,
+  moderator,
+}: AppDeps) {
   const sessions = new SessionStore(redis, config);
   const app = express();
   app.disable('x-powered-by');
@@ -68,9 +81,9 @@ export function createApp({ config, db, redis, storage, ingest, hub, embedder, l
     leaseMs: config.sseHeartbeatMs * 3,
   });
   app.use('/api/cairns', eventsRouter({ config, cairns, sources, sessions, hub, limiter }));
-  app.use('/api/cairns', queryRouter({ config, cairns, answers, redis }));
+  app.use('/api/cairns', queryRouter({ config, cairns, answers, redis, moderator }));
   app.use('/api/cairns', quizRouter({ config, cairns, quiz: new QuizService(db, llm), redis }));
-  app.use('/api/cairns', cairnsRouter({ config, cairns, sources, storage, ingest }));
+  app.use('/api/cairns', cairnsRouter({ config, cairns, sources, storage, ingest, moderator }));
   const shares = new ShareService(db);
   app.use('/api/cairns', sharesRouter({ shares }));
   app.use('/api/share-links', shareLinksRouter({ shares }));

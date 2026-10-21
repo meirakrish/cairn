@@ -227,6 +227,27 @@ export class SourceService {
     return this.changed(source);
   }
 
+  /**
+   * Marks the source rejected by moderation, with the reason, and drops any chunks. Final: unlike a
+   * failed source it is never processed or refreshed again, only deleted.
+   */
+  async reject(userId: string, sourceId: string, reason: string): Promise<Source | undefined> {
+    const source = await withUser(this.db, userId, async (tx) => {
+      await tx.delete(chunks).where(eq(chunks.sourceId, sourceId));
+      const [source] = await tx
+        .update(sources)
+        .set({
+          status: 'rejected',
+          error: reason.slice(0, MAX_ERROR_LENGTH),
+          updatedAt: sql`now()`,
+        })
+        .where(eq(sources.id, sourceId))
+        .returning();
+      return source;
+    });
+    return this.changed(source);
+  }
+
   async listChunks(userId: string, sourceId: string) {
     return withUser(this.db, userId, (tx) =>
       tx

@@ -1,4 +1,10 @@
-import { createDb, EMBEDDING_DIMENSIONS, IngestQueue, S3ObjectStore } from '@cairn/core';
+import {
+  createDb,
+  createModerator,
+  EMBEDDING_DIMENSIONS,
+  IngestQueue,
+  S3ObjectStore,
+} from '@cairn/core';
 import {
   createEmbedder,
   createLlmClient,
@@ -24,13 +30,27 @@ const llm = await createLlmClient(resolveLlmConfig(), {
   overflowHint: 'raise LLM_NUM_CTX or send fewer passages',
   log: (msg) => console.warn(msg),
 });
+// MODERATION_ENABLED=false lets every name and question through.
+const moderator = await createModerator(config.moderation, llm, {
+  log: (msg) => console.warn(msg),
+});
 
-const server = createApp({ config, db, redis, storage, ingest, hub, embedder, llm }).listen(
-  config.port,
-  () => {
-    console.log(`api listening on http://localhost:${config.port}`);
-  },
-);
+const server = createApp({
+  config,
+  db,
+  redis,
+  storage,
+  ingest,
+  hub,
+  embedder,
+  llm,
+  moderator,
+}).listen(config.port, () => {
+  const moderation = config.moderation.enabled
+    ? `with ${config.moderation.model ?? llm.model}`
+    : 'off';
+  console.log(`api listening on http://localhost:${config.port} (moderation ${moderation})`);
+});
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, () => {
