@@ -556,7 +556,7 @@ Design: the model never writes SQL. It writes a small JSON **query plan** (filte
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | 1    | Storage: `source_rows` (cairn_id, source_id, row, data jsonb; RLS like chunks) + `sources.columns` (name, type: number / date / text, inferred at ingest); migration 0014 | done    |
 | 2    | Ingest: CSV and JSON/JSONL (flat records) also write rows and column types; chunks stay (lookups, keyword search); nested JSON keeps only its chunks                      | done    |
-| 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | planned |
+| 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | done    |
 | 4    | core `TableQueryService`: router prompt (question + cairn's table schemas → plan or "passages"), run, then answer from the result; fall back to passages on a bad plan     | planned |
 | 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | planned |
 | 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | planned |
@@ -569,6 +569,14 @@ Step 2 as built: `ingest/table.ts` (`csvTable`, `jsonTable`, `readTable`) builds
 - CSV: any file with a header and a data row; extra fields get `column N`. JSON: only an array of flat objects (or JSONL of them), at least 2 records; columns are the keys in order of first appearance, `row` is the array index (JSONL: line number). A wrapper like `{"orders": [...]}` and nested values stay chunks-only (could be added later).
 - Limits: over 200,000 rows or 200 columns, the file keeps its chunks but no table (`TABLE_LIMITS`).
 - A ready source can't be requeued, so "processed again" happens only for web refreshes and retries after failure; `complete` handles both by replacing.
+
+Step 3 as built (`core/src/table/`): `TablePlan` (zod, strict: unknown keys are refused) = `filters` (and; ops eq ne gt gte lt lte in contains is_empty not_empty), `groupBy` (≤ 3), `aggregates` (count, count_distinct, sum, avg, min, max; ≤ 5), `select` (listing columns), `orderBy` (≤ 3), `limit` (1–100, default 20). `compilePlan` checks it against `sources.columns` and builds the SQL; `TableService.run(userId, sourceId, plan)` runs it as the user (RLS) and returns `{ columns, rows, rowNumbers?, matched, truncated }`.
+
+- Safe by construction: the SQL is built from fixed pieces; column names and values are always bound parameters (`data ->> $1::text`); `group by` / `order by` use output positions that we compute. Each run sets `statement_timeout` (5 s) and UTC for the transaction. Everything reads `source_rows` of the one source.
+- Modes: with `aggregates` or `groupBy` → one row per group (a groupBy alone counts; no groupBy = one row for all); with neither → a listing of rows with their row numbers, in file order unless `orderBy`. Grouped results default to biggest first by the first aggregate, then by group.
+- Types decide what is allowed: sum/avg only on numbers; min/max on numbers, dates (shown as `2024-03-15T10:30:00Z`) and text; gt/lt etc. on numbers and dates; `contains` (case-insensitive, `%` and `_` literal) only on text. Text `eq`/`in` ignore case; `ne` counts empty values as different. Grouping is by the value as written ("West" ≠ "west"). Dates compare as timestamps, so date-only and date-time values mix.
+- `PlanError` messages say what is wrong and name the real columns, so step 4 can send them back to the model. Column names match ignoring case and surrounding space.
+- Not tested: the 5 s timeout itself (no cheap slow query on 200k rows); the limits on rows and columns are checked at ingest.
 
 Open questions:
 
