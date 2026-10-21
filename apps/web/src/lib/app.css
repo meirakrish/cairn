@@ -727,6 +727,12 @@ button.link:hover {
   font-size: 0.85rem;
 }
 
+.delete-cairn {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
 button.danger {
   padding: 0.2rem 0.6rem;
   border-color: var(--error);

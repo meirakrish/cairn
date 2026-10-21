@@ -404,12 +404,12 @@
 {/if}
 
 {#if !sealed}
-  <div class="mode-switch" role="tablist" aria-label="Ask or quiz">
+  <div class="mode-switch" role="tablist" aria-label="Ask questions or be tested">
     <button type="button" role="tab" aria-selected={mode === 'ask'} onclick={() => (mode = 'ask')}
       >Ask</button
     >
     <button type="button" role="tab" aria-selected={mode === 'quiz'} onclick={() => (mode = 'quiz')}
-      >Quiz</button
+      >Test me</button
     >
   </div>
 {/if}

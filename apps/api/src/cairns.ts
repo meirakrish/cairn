@@ -128,6 +128,24 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
     res.json(body);
   });
 
+  router.delete('/:id', async (req, res) => {
+    const userId = req.user!.id;
+    const cairnId = idParam(req, 'id', 'cairn');
+    const access = await requireAccess(cairns, userId, cairnId);
+    if (access.role !== 'owner') throw new HttpError(403, 'only the owner can delete a cairn');
+    const files = await sources.list(userId, cairnId);
+    if (!(await cairns.delete(userId, cairnId))) throw new NotFoundError('cairn');
+    // The rows are gone (sources, chunks, shares, questions cascade); now the queued jobs and files.
+    // Leftovers are only wasted space, so don't fail the request.
+    for (const source of files) {
+      await ingest.remove(source.id).catch(() => {});
+      await storage.delete(source.storageKey).catch((err: unknown) => {
+        console.warn(`could not delete ${source.storageKey}:`, err);
+      });
+    }
+    res.status(204).end();
+  });
+
   router.get('/:id/sources', async (req, res) => {
     const userId = req.user!.id;
     const cairnId = idParam(req, 'id', 'cairn');
