@@ -15,6 +15,7 @@ import {
   type ListCairnsResponse,
   type ListSourcesResponse,
   type SourceResponse,
+  UpdateCairnRequest,
 } from '@cairn/shared';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
@@ -85,6 +86,17 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
 
   router.get('/:id', async (req, res) => {
     const cairn = await cairns.get(req.user!.id, idParam(req, 'id', 'cairn'));
+    if (!cairn) throw new NotFoundError('cairn');
+    const body: CairnResponse = { cairn: toDto(cairn) };
+    res.json(body);
+  });
+
+  router.patch('/:id', async (req, res) => {
+    const userId = req.user!.id;
+    const cairnId = idParam(req, 'id', 'cairn');
+    const access = await requireAccess(cairns, userId, cairnId);
+    if (access.role !== 'owner') throw new HttpError(403, 'only the owner can edit a cairn');
+    const cairn = await cairns.update(userId, cairnId, UpdateCairnRequest.parse(req.body));
     if (!cairn) throw new NotFoundError('cairn');
     const body: CairnResponse = { cairn: toDto(cairn) };
     res.json(body);

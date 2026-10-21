@@ -61,6 +61,22 @@ export class CairnService {
     });
   }
 
+  /** Renames a cairn; undefined unless the caller owns it (RLS lets only owners update). */
+  async update(
+    userId: string,
+    cairnId: string,
+    input: CreateCairnInput,
+  ): Promise<CairnWithAccess | undefined> {
+    return withUser(this.db, userId, async (tx) => {
+      const [cairn] = await tx
+        .update(cairns)
+        .set({ name: input.name, description: input.description ?? null })
+        .where(eq(cairns.id, cairnId))
+        .returning();
+      return cairn && { ...cairn, access: { role: 'owner', visibility: 'cited', shareId: null } };
+    });
+  }
+
   /** Owned and shared cairns, newest first. */
   async list(userId: string): Promise<CairnWithAccess[]> {
     return withUser(this.db, userId, async (tx) => {

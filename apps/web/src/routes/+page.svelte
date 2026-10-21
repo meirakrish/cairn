@@ -1,33 +1,25 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
+  import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
-  import { createCairn } from '#lib/api.ts';
   import Logo from '#lib/Logo.svelte';
+  import { paginate } from '#lib/paging.ts';
   import { sharedBadge } from '#lib/share.ts';
   import type { PageProps } from './$types';
 
   let { data }: PageProps = $props();
 
-  let name = $state('');
-  let description = $state('');
-  let saving = $state(false);
-  let error = $state<string | null>(null);
+  const PAGE_SIZE = 12;
 
-  async function onsubmit(event: SubmitEvent) {
-    event.preventDefault();
-    saving = true;
-    error = null;
-    try {
-      await createCairn({ name, description });
-      name = '';
-      description = '';
-      await invalidateAll();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Could not create the cairn.';
-    } finally {
-      saving = false;
-    }
+  // The page number lives in the URL (?page=2), so back and reload keep it.
+  const shown = $derived(
+    paginate(data.cairns, Number(page.url.searchParams.get('page') ?? 1), PAGE_SIZE),
+  );
+
+  function goToPage(n: number) {
+    // The path is resolve('/'); only the query changes, which the rule can't see through.
+    // eslint-disable-next-line svelte/no-navigation-without-resolve
+    void goto(n === 1 ? resolve('/') : `${resolve('/')}?page=${n}`);
   }
 
   const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
@@ -36,38 +28,42 @@
 {#if data.user}
   <h1>Your cairns</h1>
 
-  <form class="create" {onsubmit}>
-    <label>
-      Name
-      <input bind:value={name} required maxlength="100" placeholder="e.g. Tax documents" />
-    </label>
-    <label>
-      Description <span class="muted">(optional)</span>
-      <textarea bind:value={description} maxlength="1000" rows="2"></textarea>
-    </label>
-    <div class="actions">
-      <button class="primary" disabled={saving || !name.trim()}>
-        {saving ? 'Creating…' : 'Create cairn'}
-      </button>
-      {#if error}<span class="error">{error}</span>{/if}
-    </div>
-  </form>
-
   {#if data.cairns.length === 0}
-    <p class="muted">No cairns yet. Create one to start adding documents.</p>
+    <section class="empty">
+      <Logo size={64} />
+      <h2>No cairns yet</h2>
+      <p class="muted">Create one with <strong>New cairn</strong> to start adding documents.</p>
+    </section>
   {:else}
-    <ul class="cairns">
-      {#each data.cairns as cairn (cairn.id)}
+    <ul class="cairn-cards">
+      {#each shown.items as cairn (cairn.id)}
+        {@const badge = sharedBadge(cairn)}
         <li>
-          <a class="cairn-link" href={resolve('/cairns/[id]', { id: cairn.id })}>
+          <a href={resolve('/cairns/[id]', { id: cairn.id })}>
             <strong>{cairn.name}</strong>
+            {#if cairn.description}<span class="description">{cairn.description}</span>{/if}
+            <small class="muted">
+              {#if badge}{badge} ·
+              {/if}Created {dateFormat.format(new Date(cairn.createdAt))}
+            </small>
           </a>
-          {#if sharedBadge(cairn)}<span class="badge">{sharedBadge(cairn)}</span>{/if}
-          {#if cairn.description}<p>{cairn.description}</p>{/if}
-          <small class="muted">Created {dateFormat.format(new Date(cairn.createdAt))}</small>
         </li>
       {/each}
     </ul>
+
+    {#if shown.pages > 1}
+      <nav class="pager" aria-label="Pages">
+        <button type="button" disabled={shown.page === 1} onclick={() => goToPage(shown.page - 1)}
+          >Previous</button
+        >
+        <span class="muted">Page {shown.page} of {shown.pages}</span>
+        <button
+          type="button"
+          disabled={shown.page === shown.pages}
+          onclick={() => goToPage(shown.page + 1)}>Next</button
+        >
+      </nav>
+    {/if}
   {/if}
 {:else}
   <section class="signin">

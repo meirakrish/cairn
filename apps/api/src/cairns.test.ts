@@ -82,6 +82,54 @@ describe('/api/cairns', () => {
   });
 });
 
+describe('PATCH /api/cairns/:id', () => {
+  const patch = (cookie: string, id: string, body: unknown) =>
+    request(t.app)
+      .patch(`/api/cairns/${id}`)
+      .set('Cookie', cookie)
+      .set('Origin', APP_ORIGIN)
+      .send(body as object);
+
+  it('lets the owner rename a cairn and change its description', async () => {
+    const cookie = await t.signIn((await t.createUser()).id);
+    const id = (await create(cookie, { name: 'Taxes', description: 'old' }).expect(201)).body.cairn
+      .id as string;
+
+    const res = await patch(cookie, id, { name: '  Taxes 2026 ', description: ' ' }).expect(200);
+    expect(res.body.cairn).toMatchObject({
+      id,
+      name: 'Taxes 2026',
+      description: null,
+      role: 'owner',
+    });
+    const got = await request(t.app).get(`/api/cairns/${id}`).set('Cookie', cookie).expect(200);
+    expect(got.body.cairn.name).toBe('Taxes 2026');
+
+    expect((await patch(cookie, id, { name: '' }).expect(400)).body.issues.name).toBeDefined();
+  });
+
+  it('404s for strangers and 403s for people it is shared with', async () => {
+    const owner = await t.createUser({ email: 'owner@example.test' });
+    const ownerCookie = await t.signIn(owner.id);
+    const id = (await create(ownerCookie, { name: 'Docs' }).expect(201)).body.cairn.id as string;
+    const editor = await t.createUser({ email: 'editor@example.test' });
+    await request(t.app)
+      .post(`/api/cairns/${id}/shares`)
+      .set('Cookie', ownerCookie)
+      .set('Origin', APP_ORIGIN)
+      .send({ kind: 'email', email: editor.email, role: 'editor', visibility: 'cited' })
+      .expect(201);
+
+    await patch(await t.signIn((await t.createUser()).id), id, { name: 'x' }).expect(404);
+    await patch(await t.signIn(editor.id), id, { name: 'x' }).expect(403);
+    await request(t.app)
+      .patch(`/api/cairns/${id}`)
+      .set('Cookie', ownerCookie)
+      .send({ name: 'x' })
+      .expect(403);
+  });
+});
+
 describe('/api fallbacks', () => {
   it('returns JSON 404 for unknown routes', async () => {
     const res = await request(t.app).get('/api/nope').expect(404);

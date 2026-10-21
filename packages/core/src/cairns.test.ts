@@ -46,6 +46,23 @@ describe('CairnService.get', () => {
   });
 });
 
+describe('CairnService.update', () => {
+  it('renames for the owner only', async () => {
+    const owner = await createUser(admin.db);
+    const editor = await createUser(admin.db);
+    const cairn = await service.create(owner.id, { name: 'A', description: 'old' });
+    await new ShareService(app.db).shareWithEmail(owner.id, cairn.id, editor.email, {
+      role: 'editor',
+      visibility: 'cited',
+    });
+
+    const updated = await service.update(owner.id, cairn.id, { name: 'B' });
+    expect(updated).toMatchObject({ name: 'B', description: null, access: { role: 'owner' } });
+    expect(await service.update(editor.id, cairn.id, { name: 'pwned' })).toBeUndefined();
+    expect((await service.get(owner.id, cairn.id))?.name).toBe('B');
+  });
+});
+
 describe('RLS on cairns', () => {
   it("hides other users' cairns", async () => {
     const a = await createUser(admin.db);
