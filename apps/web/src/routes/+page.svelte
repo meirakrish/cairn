@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import { createCairn } from '#lib/api.ts';
   import Logo from '#lib/Logo.svelte';
+  import { sharedBadge } from '#lib/share.ts';
   import type { PageProps } from './$types';
 
   let { data }: PageProps = $props();
@@ -61,6 +62,7 @@
           <a class="cairn-link" href={resolve('/cairns/[id]', { id: cairn.id })}>
             <strong>{cairn.name}</strong>
           </a>
+          {#if sharedBadge(cairn)}<span class="badge">{sharedBadge(cairn)}</span>{/if}
           {#if cairn.description}<p>{cairn.description}</p>{/if}
           <small class="muted">Created {dateFormat.format(new Date(cairn.createdAt))}</small>
         </li>

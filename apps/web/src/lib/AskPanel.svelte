@@ -3,7 +3,14 @@
   import { describeLocation, splitCitations } from './answer';
   import { askQuestion } from './api';
 
-  let { cairnId, readySources }: { cairnId: string; readySources: number } = $props();
+  // Sealed: text-only answers, and no way to know which files are ready, so asking is always on.
+  let {
+    cairnId,
+    readySources,
+    sealed = false,
+  }: { cairnId: string; readySources: number; sealed?: boolean } = $props();
+
+  const canAsk = $derived(sealed || readySources > 0);
 
   type Phase = 'idle' | 'searching' | 'writing' | 'done' | 'stopped' | 'error';
 
@@ -39,13 +46,16 @@
       await askQuestion(
         cairnId,
         q,
+        sealed,
         (e) => {
           if (e.type === 'passages') {
             passages = e.passages;
             phase = 'writing';
-          } else if (e.type === 'delta') answer += e.text;
-          else if (e.type === 'done') {
-            cited = e.cited;
+          } else if (e.type === 'delta') {
+            answer += e.text;
+            phase = 'writing';
+          } else if (e.type === 'done') {
+            cited = 'cited' in e ? e.cited : [];
             phase = 'done';
           } else {
             error = e.message;
@@ -94,20 +104,23 @@
       {onkeydown}
       rows="2"
       maxlength="1000"
-      placeholder={readySources
+      placeholder={canAsk
         ? 'Ask a question about these files…'
         : 'Add files and wait until they are ready to ask questions'}
-      disabled={!readySources}></textarea>
+      disabled={!canAsk}></textarea>
     <div class="actions">
       {#if busy}
         <button type="button" onclick={stop}>Stop</button>
         <span class="muted">{phase === 'searching' ? 'Searching…' : 'Writing…'}</span>
       {:else}
-        <button class="primary" disabled={!readySources || !question.trim()}>Ask</button>
+        <button class="primary" disabled={!canAsk || !question.trim()}>Ask</button>
         <small class="muted">Enter to ask, Shift+Enter for a new line</small>
       {/if}
     </div>
   </form>
+  {#if sealed}
+    <p class="muted sealed-note">Answers only: sources are not shown for this cairn.</p>
+  {/if}
 
   {#if phase !== 'idle'}
     <article class="answer" aria-live="polite">

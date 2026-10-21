@@ -161,4 +161,25 @@ describe('google login', () => {
     expect(res.headers.location).toBe('/?login=failed');
     expect(await t.admin.select().from(users)).toEqual([]);
   });
+
+  it('returns to a safe path given at start, and ignores anything else', async () => {
+    const begin = async (returnTo: string) => {
+      const res = await request(t.app).get('/api/auth/google/start').query({ returnTo });
+      const state = new URL(res.headers.location!).searchParams.get('state')!;
+      const nonce = new URL(res.headers.location!).searchParams.get('nonce')!;
+      mockGoogle(profile(nonce));
+      return (await callback(state).expect(302)).headers.location;
+    };
+
+    expect(await begin('/s/abc_DEF-123')).toBe('/s/abc_DEF-123');
+    for (const bad of [
+      'https://evil.test/',
+      '//evil.test',
+      '/\\evil.test',
+      '/api/auth/logout',
+      'x',
+    ]) {
+      expect(await begin(bad)).toBe('/');
+    }
+  });
 });
