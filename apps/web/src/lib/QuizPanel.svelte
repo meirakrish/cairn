@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { QuizQuestion, QuizResult } from '@cairn/shared';
   import { describeLocation, pageLink } from './answer';
   import { answerQuiz, newQuizQuestion } from './api';
@@ -19,6 +20,7 @@
   let error = $state<string | null>(null);
   let showPassage = $state(false);
   let controller: AbortController | undefined;
+  let started = false;
 
   const score = $derived(tally(outcomes));
   const canQuiz = $derived(readySources > 0);
@@ -26,11 +28,22 @@
   const message = (err: unknown, fallback: string) =>
     err instanceof Error ? err.message : fallback;
 
-  function start(event: SubmitEvent) {
-    event.preventDefault();
+  function begin() {
+    started = true;
     outcomes = [];
     void next();
   }
+
+  function start(event: SubmitEvent) {
+    event.preventDefault();
+    begin();
+  }
+
+  // Opening the quiz shows the first question right away (from the bank, or written by the model);
+  // if no file is ready yet, it starts when the first one is. Only once: after End quiz, wait.
+  $effect(() => {
+    if (canQuiz && !started) untrack(begin);
+  });
 
   async function next() {
     controller?.abort();
@@ -110,7 +123,7 @@
       <h2>Quiz done</h2>
       <p class="score-big">{describeScore(score)}</p>
       <div class="actions">
-        <button class="primary" type="button" onclick={() => (phase = 'setup')}>New quiz</button>
+        <button class="primary" type="button" onclick={begin}>New quiz</button>
       </div>
     </div>
   {:else}

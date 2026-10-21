@@ -490,6 +490,8 @@ As built: `CairnDialog` is back to create/edit only; the trash (red, right-hand 
 
 Layout fix (2026-10-21, from a screenshot): the Ask / Test me switch sat at the panel's left edge, outside the 48rem column (an inline-flex element ignores `margin-inline: auto`); it now lines up with the title and the question box. Then moved into the header: title on the first row; the switch on the left and the buttons (`.cairn-actions`, pushed right) on the second row, at the same height. Header spacing 1rem → 1.5rem.
 
+Test me starts at once (2026-10-21): `QuizPanel` fetches the first question when it opens, once a file is ready (the api already serves the bank first and writes only when nothing unseen is left); "Start quiz" shows only after End quiz with nothing answered, and "New quiz" starts straight away.
+
 ## Current layout
 
 ```
