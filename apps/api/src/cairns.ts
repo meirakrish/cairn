@@ -139,6 +139,29 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
     res.status(202).json(body);
   });
 
+  // The original of an image source, for previews next to its passages. Images only for now (other
+  // kinds would need allow_download); sealed callers never get files. Served inertly: uploads are
+  // untrusted, so no sniffing and a CSP that forbids everything if someone opens the URL directly.
+  router.get('/:id/sources/:sourceId/file', async (req, res) => {
+    const userId = req.user!.id;
+    const cairnId = idParam(req, 'id', 'cairn');
+    requireCited(await requireAccess(cairns, userId, cairnId));
+    const source = await sources.get(userId, idParam(req, 'sourceId', 'source'));
+    if (!source || source.cairnId !== cairnId || source.kind !== 'image') {
+      throw new NotFoundError('source');
+    }
+    const data = await storage.get(source.storageKey);
+    res.set({
+      'Content-Type': source.mime,
+      'Content-Length': String(data.length),
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(source.filename)}`,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cache-Control': 'private, max-age=3600',
+    });
+    res.end(Buffer.from(data));
+  });
+
   router.delete('/:id/sources/:sourceId', async (req, res) => {
     const userId = req.user!.id;
     const cairnId = idParam(req, 'id', 'cairn');

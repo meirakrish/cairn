@@ -222,6 +222,54 @@
         { "source": "design.md", "contains": "Anthropic has no embedding API" },
         { "source": "llm-kit.md", "contains": "Anthropic has no embedding API" }
       ]
+    },
+    {
+      "id": "csv-elmo",
+      "style": "direct",
+      "question": "How many cairns are on Saint Elmo's Climb?",
+      "expect": [{ "source": "trails.csv", "contains": "Saint Elmo's Climb" }]
+    },
+    {
+      "id": "csv-heron",
+      "style": "paraphrase",
+      "question": "How long is the walk called Heron Bay 3, and is it difficult?",
+      "expect": [{ "source": "trails.csv", "contains": "name: Heron Bay 3" }]
+    },
+    {
+      "id": "json-lost",
+      "style": "direct",
+      "question": "Which order was lost in transit?",
+      "expect": [{ "source": "shop.json", "contains": "status: lost in transit" }]
+    },
+    {
+      "id": "json-returns",
+      "style": "paraphrase",
+      "question": "How long do customers have to send something back?",
+      "expect": [{ "source": "shop.json", "contains": "returns_days: 30" }]
+    },
+    {
+      "id": "img-gate",
+      "style": "exact",
+      "question": "Raven Ridge gate code",
+      "expect": [{ "source": "trailhead.png", "contains": "7319" }]
+    },
+    {
+      "id": "img-bus",
+      "style": "paraphrase",
+      "question": "When does the final bus leave the trailhead?",
+      "expect": [{ "source": "trailhead.png", "contains": "18:45" }]
+    },
+    {
+      "id": "scan-signage",
+      "style": "paraphrase",
+      "question": "How much money was set aside for new signs?",
+      "expect": [{ "source": "minutes-scan.pdf", "contains": "600 for new signage" }]
+    },
+    {
+      "id": "scan-roster",
+      "style": "direct",
+      "question": "Who will repaint the waymarks?",
+      "expect": [{ "source": "minutes-scan.pdf", "contains": "repaint waymarks" }]
     }
   ]
 }

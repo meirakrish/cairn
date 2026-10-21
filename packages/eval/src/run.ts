@@ -1,5 +1,6 @@
-// Retrieval eval: ingests the fixed corpus into its own database (cairn_eval) with the real embedder,
-// asks every question under several search settings, and reports recall@k and MRR.
+// Retrieval eval: ingests the fixed corpus into its own database (cairn_eval) with the real embedder
+// (and the chat model's vision for the image and the scanned PDF), asks every question under several
+// search settings, and reports recall@k and MRR.
 // Run with `pnpm eval` (needs Postgres, Redis and Ollama, as for `pnpm dev`).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -19,7 +20,13 @@ import {
   prepareTestDatabase,
   resetDb,
 } from '@cairn/core/testing';
-import { createEmbedder, resolveEmbedConfig } from '@meirakrish/llm-kit';
+import {
+  createEmbedder,
+  createLlmClient,
+  resolveEmbedConfig,
+  resolveLlmConfig,
+} from '@meirakrish/llm-kit';
+import sharp from 'sharp';
 import { questionRank, summarize, type Question } from './metrics';
 
 process.env.TEST_DATABASE_NAME ??= 'cairn_eval';
@@ -48,28 +55,67 @@ function constitutionPdf(): Uint8Array {
   return makePdf(pages);
 }
 
-const CORPUS: Array<{ filename: string; kind: SourceKind; mime: string; data: () => Uint8Array }> =
-  [
-    { filename: 'constitution.pdf', kind: 'pdf', mime: 'application/pdf', data: constitutionPdf },
-    {
-      filename: 'elements-of-style.txt',
-      kind: 'text',
-      mime: 'text/plain',
-      data: () => readFileSync(here('corpus/elements-of-style.txt')),
-    },
-    {
-      filename: 'design.md',
-      kind: 'markdown',
-      mime: 'text/markdown',
-      data: () => readFileSync(here('corpus/design.md')),
-    },
-    {
-      filename: 'llm-kit.md',
-      kind: 'markdown',
-      mime: 'text/markdown',
-      data: () => readFileSync(here('corpus/llm-kit.md')),
-    },
-  ];
+/** The trail sign SVG as a PNG photo stand-in. */
+const trailheadPng = () =>
+  sharp(readFileSync(here('corpus/trailhead.svg')))
+    .png()
+    .toBuffer();
+
+/** The minutes SVG as a slightly rotated, lossy JPEG scan: the only page of a PDF without text. */
+async function minutesScanPdf(): Promise<Uint8Array> {
+  const jpeg = await sharp(readFileSync(here('corpus/minutes.svg')))
+    .rotate(0.6, { background: '#f3efe4' })
+    .jpeg({ quality: 70 })
+    .toBuffer();
+  const { width, height } = await sharp(jpeg).metadata();
+  return makePdf([{ jpeg, width: width!, height: height! }]);
+}
+
+const CORPUS: Array<{
+  filename: string;
+  kind: SourceKind;
+  mime: string;
+  data: () => Uint8Array | Promise<Uint8Array>;
+}> = [
+  { filename: 'constitution.pdf', kind: 'pdf', mime: 'application/pdf', data: constitutionPdf },
+  {
+    filename: 'elements-of-style.txt',
+    kind: 'text',
+    mime: 'text/plain',
+    data: () => readFileSync(here('corpus/elements-of-style.txt')),
+  },
+  {
+    filename: 'design.md',
+    kind: 'markdown',
+    mime: 'text/markdown',
+    data: () => readFileSync(here('corpus/design.md')),
+  },
+  {
+    filename: 'llm-kit.md',
+    kind: 'markdown',
+    mime: 'text/markdown',
+    data: () => readFileSync(here('corpus/llm-kit.md')),
+  },
+  {
+    filename: 'trails.csv',
+    kind: 'csv',
+    mime: 'text/csv',
+    data: () => readFileSync(here('corpus/trails.csv')),
+  },
+  {
+    filename: 'shop.json',
+    kind: 'json',
+    mime: 'application/json',
+    data: () => readFileSync(here('corpus/shop.json')),
+  },
+  { filename: 'trailhead.png', kind: 'image', mime: 'image/png', data: trailheadPng },
+  {
+    filename: 'minutes-scan.pdf',
+    kind: 'pdf',
+    mime: 'application/pdf',
+    data: minutesScanPdf,
+  },
+];
 
 const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(5);
 const fmtRank = (r: number) => (r === Infinity ? '  -' : String(r).padStart(3));
@@ -86,14 +132,15 @@ async function main() {
     const cairns = new CairnService(app.db, embedder.model);
     const sources = new SourceService(app.db);
     const storage = new MemoryObjectStore();
-    const ingest = new IngestService({ cairns, sources, storage, embedder });
+    const vision = await createLlmClient(resolveLlmConfig(), { log: (m) => console.warn(m) });
+    const ingest = new IngestService({ cairns, sources, storage, embedder, vision });
     const retrieval = new RetrievalService(app.db, embedder);
 
     const user = await createUser(admin.db, { googleSub: 'eval' });
     const cairn = await cairns.create(user.id, { name: 'Eval corpus' });
-    console.log(`Ingesting the corpus with ${embedder.model}...`);
+    console.log(`Ingesting the corpus with ${embedder.model} (vision: ${vision.model})...`);
     for (const doc of CORPUS) {
-      const data = doc.data();
+      const data = await doc.data();
       const source = await sources.create(user.id, cairn.id, { ...doc, size: data.length });
       await storage.put(source.storageKey, data, doc.mime);
       const started = Date.now();
@@ -140,6 +187,22 @@ async function main() {
       console.log(
         `${r.config.name.padEnd(24)} ${pct(s.recall[1]!)} ${pct(s.recall[3]!)} ${pct(s.recall[8]!)} ${s.mrr.toFixed(2).padStart(5)} |` +
           `     ${pct(r.byStyle.direct!.recall[8]!)}      ${pct(r.byStyle.paraphrase!.recall[8]!)} ${pct(r.byStyle.exact!.recall[8]!)}`,
+      );
+    }
+
+    // The app's setting, split by the kind of file each question's passage is in.
+    const kindOf = new Map(
+      CORPUS.map((d) => [d.filename, d.filename.endsWith('-scan.pdf') ? 'scan' : d.kind]),
+    );
+    const hybrid = results[0]!;
+    console.log(`\n${hybrid.config.name} by file type:  R@1   R@3   R@8   MRR  questions`);
+    for (const kind of [...new Set(kindOf.values())]) {
+      const ranks = hybrid.perQuestion
+        .filter((_, i) => kindOf.get(questions[i]!.expect[0]!.source) === kind)
+        .map((r) => r.rank);
+      const s = summarize(ranks, KS);
+      console.log(
+        `  ${kind.padEnd(22)} ${pct(s.recall[1]!)} ${pct(s.recall[3]!)} ${pct(s.recall[8]!)} ${s.mrr.toFixed(2).padStart(5)}  ${ranks.length}`,
       );
     }
 

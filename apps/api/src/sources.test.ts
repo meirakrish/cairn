@@ -205,3 +205,58 @@ describe('DELETE /api/cairns/:id/sources/:sourceId', () => {
     expect(await t.admin.select().from(sources)).toHaveLength(1);
   });
 });
+
+describe('GET /api/cairns/:id/sources/:sourceId/file', () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+  it('serves an image source inertly to cited callers', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    const { body } = await upload(cookie, cairnId, PNG, 'trail sign.png').expect(202);
+
+    const res = await request(t.app)
+      .get(`/api/cairns/${cairnId}/sources/${body.source.id}/file`)
+      .set('Cookie', cookie)
+      .buffer(true)
+      .parse((r, done) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (c: Buffer) => chunks.push(c));
+        r.on('end', () => done(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(res.body).toEqual(PNG);
+    expect(res.headers).toMatchObject({
+      'content-type': 'image/png',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      'content-disposition': "inline; filename*=UTF-8''trail%20sign.png",
+    });
+  });
+
+  it('404s for non-image sources and other cairns; 403 for sealed callers', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    const text = (await upload(cookie, cairnId, 'hello').expect(202)).body.source.id as string;
+    const image = (await upload(cookie, cairnId, PNG, 'a.png').expect(202)).body.source
+      .id as string;
+    await request(t.app)
+      .get(`/api/cairns/${cairnId}/sources/${text}/file`)
+      .set('Cookie', cookie)
+      .expect(404);
+
+    const other = await signedInWithCairn();
+    await request(t.app)
+      .get(`/api/cairns/${other.cairnId}/sources/${image}/file`)
+      .set('Cookie', other.cookie)
+      .expect(404);
+
+    await request(t.app)
+      .post(`/api/cairns/${cairnId}/shares`)
+      .set('Cookie', cookie)
+      .set('Origin', APP_ORIGIN)
+      .send({ kind: 'email', email: other.user.email, role: 'viewer', visibility: 'sealed' })
+      .expect(201);
+    await request(t.app)
+      .get(`/api/cairns/${cairnId}/sources/${image}/file`)
+      .set('Cookie', other.cookie)
+      .expect(403);
+  });
+});
