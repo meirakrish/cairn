@@ -1221,3 +1221,20 @@ h1 + .badge {
     transition: none;
   }
 }
+
+.add-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.add-sources button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.add-sources button[aria-expanded='true'] {
+  border-color: var(--accent);
+}

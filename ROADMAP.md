@@ -468,6 +468,16 @@ Step 1 as built: the database cascades sources, chunks, shares, questions, quiz 
 
 Step 2 as built: `deleteCairn` in `api.ts`; `CairnDialog` (edit mode) shows a link, then an inline warning with "Delete cairn" / "Keep it"; on success it refreshes the loads and goes to `/`. Not checked in a browser (needs a Google sign-in).
 
+## Phase 10: sources panel
+
+Branch `phase10/sources-panel` (from `phase9/cairn-deletion`). Asked for on 2026-10-21.
+
+| Step | What                                                                                                                                              | Status |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 1    | Web: the Files button becomes a database-icon "Sources" panel with Add files / Add web pages; the header's paperclip and link buttons are removed | done   |
+
+As built: the panel lists every source (delete, refresh, status as before) and, for owners and editors, has "Add files" (opens the file picker) and "Add web pages" (shows the `AddLinks` form inline). Drag-and-drop and the paperclip in the question box still work. Not checked in a browser.
+
 ## Current layout
 
 ```
@@ -536,4 +546,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: merge `phase9/cairn-deletion`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: merge `phase9/cairn-deletion` and `phase10/sources-panel`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
