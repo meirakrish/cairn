@@ -88,7 +88,7 @@ const readEditDelete = (name: string, cairnId: unknown, canDelete: (id: unknown)
 /** Vector length of chunks.embedding. Changing it needs a migration and re-embedding every chunk. */
 export const EMBEDDING_DIMENSIONS = 1024;
 
-export const SOURCE_KINDS = ['text', 'markdown', 'pdf', 'csv'] as const;
+export const SOURCE_KINDS = ['text', 'markdown', 'pdf', 'csv', 'json'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 export const SOURCE_STATUSES = ['pending', 'processing', 'ready', 'failed'] as const;
@@ -274,6 +274,10 @@ export interface ChunkLocation {
   offset?: number;
   /** CSV: first and last spreadsheet row (the header is row 1). */
   rows?: [number, number];
+  /** JSON Lines: first and last line. */
+  lines?: [number, number];
+  /** JSON: the record's path, or the first and last ("$.orders[3] … $.orders[9]"). */
+  path?: string;
 }
 
 export type User = typeof users.$inferSelect;

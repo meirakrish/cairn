@@ -36,6 +36,13 @@
       "when": 1792562353342,
       "tag": "0004_csv_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792563498921,
+      "tag": "0005_json_kind",
+      "breakpoints": true
     }
   ]
 }

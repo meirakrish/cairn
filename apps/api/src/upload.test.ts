@@ -17,6 +17,8 @@ describe('detectKind', () => {
     expect(detectKind('no-extension', text)?.kind).toBe('text');
     expect(detectKind('data.csv', text)).toEqual({ kind: 'csv', mime: 'text/csv' });
     expect(detectKind('data.TSV', text)?.kind).toBe('csv');
+    expect(detectKind('data.json', text)).toEqual({ kind: 'json', mime: 'application/json' });
+    expect(detectKind('log.ndjson', text)?.kind).toBe('json');
   });
 
   it('rejects binary content, even with a text extension', () => {

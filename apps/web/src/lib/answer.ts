@@ -20,13 +20,15 @@ export function splitCitations(answer: string, passageCount: number): Segment[] 
   return segments;
 }
 
-/** "page 3", "Setup › Linux", "rows 2–40", or "" — where a passage sits in its file. */
+/** "page 3", "Setup › Linux", "rows 2–40", "lines 5–9", "$.orders[3]", or "" — where a passage sits in its file. */
+const span = (unit: string, [first, last]: [number, number]) =>
+  first === last ? `${unit} ${first}` : `${unit}s ${first}–${last}`;
+
 export function describeLocation(location: CitedPassage['location']): string {
   if (location.page) return `page ${location.page}`;
-  if (location.rows) {
-    const [first, last] = location.rows;
-    return first === last ? `row ${first}` : `rows ${first}–${last}`;
-  }
+  if (location.rows) return span('row', location.rows);
+  if (location.lines) return span('line', location.lines);
+  if (location.path) return location.path;
   if (location.headings?.length) return location.headings.join(' › ');
   return '';
 }

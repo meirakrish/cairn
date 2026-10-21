@@ -92,7 +92,7 @@ export type ListSharesResponse = z.infer<typeof ListSharesResponse>;
 export const RedeemShareLinkResponse = z.object({ cairnId: z.uuid() });
 export type RedeemShareLinkResponse = z.infer<typeof RedeemShareLinkResponse>;
 
-export const SourceKind = z.enum(['text', 'markdown', 'pdf', 'csv']);
+export const SourceKind = z.enum(['text', 'markdown', 'pdf', 'csv', 'json']);
 export type SourceKind = z.infer<typeof SourceKind>;
 
 export const SourceStatus = z.enum(['pending', 'processing', 'ready', 'failed']);
@@ -137,6 +137,8 @@ export const ChunkLocation = z.object({
   headings: z.array(z.string()).optional(),
   offset: z.number().int().optional(),
   rows: z.tuple([z.number().int(), z.number().int()]).optional(),
+  lines: z.tuple([z.number().int(), z.number().int()]).optional(),
+  path: z.string().optional(),
 });
 
 /** A passage handed to the model, numbered as the answer cites it ([1], [2], ...). */
