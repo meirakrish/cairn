@@ -176,6 +176,32 @@ Plan decisions (agreed 2026-10-20):
 - Eval corpus in English only for now (user's call), from the repo's docs plus public-domain texts incl. a PDF.
 - Chat model `qwen3.5:9b`, thinking off, 16k context; check it fits next to the embedding model.
 
+## Phase 4: sharing (in progress)
+
+| Step | What                                                                                                                                                            | Status | Branch                |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------- |
+| 1    | Schema + RLS: `shares`, `share_redemptions`, `query_log.share_id`; `cairn_access()` / `redeem_share_link()`; per-role policies; RLS tests                       | done   | `phase4/step1-shares` |
+| 2    | core `ShareService` + access policy: `access(userId, cairnId)` → role/visibility/shareId; create/list/revoke; link tokens (32 random bytes, hashed)             | next   |                       |
+| 3    | api: `/api/cairns/:id/shares` (owner), `POST /api/share-links/:token/redeem`, cairn list with role + mode, sealed → 403 on sources/events, per-share rate limit | todo   |                       |
+| 4    | Sealed answers: no source details in the prompt, citation-free event types, synthesize-don't-quote prompt, verbatim 12-word overlap → "…"                       | todo   |                       |
+| 5    | Web: Share dialog (email, link, role, mode, revoke, copy), `/s/:token` sign-in + redeem, shared badge, sealed view (Ask only, "sources are not shown")          | todo   |                       |
+
+Plan decisions (agreed 2026-10-21):
+
+- Links require Google sign-in; opening one records a redemption, so RLS stays tied to a user and logs/limits point at a person.
+- Email shares match the signed-in user's verified Google email (case-insensitive); no email is sent, the owner passes it on.
+- Editors are always `cited` (DB check). Editors add sources; only the owner deletes them. `allow_download` waits for a download endpoint; API keys stay in "Next stage".
+- Sealed verbatim check: hold back the last ~12 words of the stream; a 12-word run matching a passage is replaced with "…".
+- Branched from `phase3/step5-ask` (not merged into `main` yet).
+
+Step 1 as built:
+
+- `shares` (cairn_id, grantee_email | link_token_hash, role, visibility, expires_at, revoked_at, created_by): exactly one grantee (check), email stored lowercase (check), editor ⇒ cited (check), one live email share per cairn+email (partial unique index), sha256 hex of the token only. Rows are revoked, not deleted.
+- `share_redemptions` (share_id, user_id): no insert policy; only `redeem_share_link(hash)` inserts (active links only, needs a user, idempotent, returns the cairn id). A user can delete their own (leave); the owner sees and deletes all for their shares.
+- `cairn_access(cairn_id)` → one row (role, visibility, share_id) or none: owner first, else the best active share (editor > viewer, cited > sealed, oldest). Both functions are `security definer` (owned by the migration role) and hand-written in `0003_shares.sql`, so `cairns` and `shares` policies don't recurse through each other.
+- Policies: cairns read = owner or `cairn_access`; cairn writes owner-only. sources/chunks read = cairn visible (sealed callers included: retrieval needs chunks; services hide them); insert/update = owner or editor (the worker runs as the uploader); delete sources = owner, delete chunks = owner or editor (reprocessing). query_log: insert own rows on a visible cairn; read own rows, owner reads all. shares: owner only.
+- `src/db/shares-rls.test.ts` (18 tests). Checked they bite: dropping `revoked_at IS NULL` from `cairn_access` fails 3.
+
 ## Current layout
 
 ```
@@ -225,6 +251,8 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - `qwen3.5:9b` failed with NVIDIA driver 610.88 (`CUDA error: a PTX JIT compilation failed`, then Ollama stuck until restarted). Fixed by updating to 617.42.
 - The "models swap" problem was a crash, not eviction: Ollama said the chat model fits next to the embedding model, then its llama-server died with `GGML_ASSERT(ctx->mem_buffer != NULL)` (exit 0xc0000409) because Windows ran out of commit (no page file; limit = 31.9 GB RAM; the chat model commits ~8.5 GB, the embedding model ~2.2 GB, other apps ~19 GB). With the browser closed both stay loaded. Lasting fix: enable a page file (System managed) on Windows. `OLLAMA_MAX_LOADED_MODELS=2` is set; `use_mmap: true` did not help.
 - If Ollama is down when the api starts, llm-kit can't see that the model supports thinking and won't send `think: false`, so answers include thinking (slow). Restart the api once Ollama is up; fix belongs in llm-kit (probe lazily).
+- `drizzle-kit generate` asks interactively when policies are replaced ("created or renamed?"), which fails without a TTY. Run it under `script` and press Enter for each prompt ("create" is the default): `(for i in $(seq 30); do sleep 1.5; printf '\r'; done) | script -qfc "npx drizzle-kit generate --name X" /dev/null` in `packages/core`.
+- SQL functions (`cairn_access`, `redeem_share_link`) are hand-written in migrations; drizzle-kit doesn't track them, so changing one means a new custom migration (`CREATE OR REPLACE`).
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
 ## Commands
@@ -240,4 +268,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 4 (sharing), plan to be agreed before code.** Phase 3 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 4 step 2 (`ShareService`).** Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
