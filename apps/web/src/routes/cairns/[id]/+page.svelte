@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
   import { SourceEvent, type Source } from '@cairn/shared';
   import { sseData } from '#lib/answer.ts';
   import { deleteSource, uploadSource } from '#lib/api.ts';
   import AskPanel from '#lib/AskPanel.svelte';
+  import CairnDialog from '#lib/CairnDialog.svelte';
+  import Popover from '#lib/Popover.svelte';
   import { sharedBadge } from '#lib/share.ts';
   import SharePanel from '#lib/SharePanel.svelte';
   import type { PageProps } from './$types';
@@ -28,12 +29,15 @@
   let uploads = $state<Upload[]>([]);
   // busy: refused because this user has too many live views open (other tabs).
   let live = $state<'connecting' | 'live' | 'lost' | 'busy'>('connecting');
+  // Files dragged over the page (anywhere): dragenter/dragleave fire per element, so count them.
   let dragging = $state(false);
+  let dragDepth = 0;
   // Inline delete confirmation (no browser dialogs): the source being confirmed, and per-row errors.
   let confirming = $state<string | null>(null);
   let deleting = $state<string | null>(null);
   let rowErrors = $state<Record<string, string>>({});
   let fileInput = $state<HTMLInputElement>();
+  let editDialog = $state<CairnDialog>();
   let nextKey = 0;
 
   const byNewest = (a: Source, b: Source) => b.createdAt.localeCompare(a.createdAt);
@@ -114,10 +118,31 @@
     uploads = uploads.filter((u) => u.key !== key);
   }
 
-  function ondrop(event: DragEvent) {
+  const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') ?? false;
+
+  function ondragenter(event: DragEvent) {
+    if (!canUpload || sealed || !hasFiles(event)) return;
     event.preventDefault();
+    dragDepth++;
+    dragging = true;
+  }
+
+  function ondragover(event: DragEvent) {
+    // Also for callers who can't upload: a file dropped on the page must not replace it.
+    if (hasFiles(event)) event.preventDefault();
+  }
+
+  function ondragleave() {
+    if (dragDepth > 0 && --dragDepth === 0) dragging = false;
+  }
+
+  function ondrop(event: DragEvent) {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    const wasDragging = dragging;
+    dragDepth = 0;
     dragging = false;
-    void addFiles(event.dataTransfer?.files);
+    if (wasDragging) void addFiles(event.dataTransfer?.files);
   }
 
   async function remove(source: Source) {
@@ -146,6 +171,16 @@
     image: 'IMG',
   };
 
+  const LIVE_LABEL: Record<typeof live, string> = {
+    live: 'Live',
+    connecting: 'Connecting…',
+    busy: 'Paused: Cairn is open in too many tabs',
+    lost: 'Disconnected, retrying',
+  };
+
+  const UPLOAD_NOTE =
+    'Text, Markdown, PDF, CSV, JSON or images, up to 25 MB each. Images and scanned PDF pages are read by the AI model, which takes a few seconds per page.';
+
   const STATUS_LABEL: Record<Source['status'], string> = {
     pending: 'Queued',
     processing: 'Processing…',
@@ -169,33 +204,104 @@
   <title>{data.cairn.name} · Cairn</title>
 </svelte:head>
 
-<a class="back" href={resolve('/')}>← Your cairns</a>
-<h1>{data.cairn.name}</h1>
-{#if badge}<span class="badge">{badge}</span>{/if}
-{#if data.cairn.description}<p class="muted">{data.cairn.description}</p>{/if}
+<svelte:window {ondragenter} {ondragover} {ondragleave} {ondrop} />
 
-<AskPanel
-  cairnId={data.cairn.id}
-  readySources={sources.filter((s) => s.status === 'ready').length}
-  {sealed}
-/>
+<div class="cairn-header">
+  <div class="title">
+    <h1>{data.cairn.name}</h1>
+    {#if badge}<span class="badge">{badge}</span>{/if}
+    {#if data.cairn.description}<p class="muted">{data.cairn.description}</p>{/if}
+  </div>
 
-{#if !sealed}
-  {#if canUpload}
-    <div
-      class="dropzone"
-      class:dragging
-      role="region"
-      aria-label="Upload files"
-      ondragover={(e) => {
-        e.preventDefault();
-        dragging = true;
-      }}
-      ondragleave={() => (dragging = false)}
-      {ondrop}
+  {#if !sealed}
+    <Popover label="Files" count={live === 'connecting' ? undefined : sources.length}>
+      {#snippet icon()}
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+          ><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path
+            d="M14 3v6h6"
+          /></svg
+        >
+      {/snippet}
+      <div class="sources-header">
+        <h2>Files</h2>
+        <span class="live {live}" title="Status updates">{LIVE_LABEL[live]}</span>
+      </div>
+      {#if sources.length === 0 && live === 'live'}
+        <p class="muted">No files yet.{canUpload ? ' Add some to build this cairn.' : ''}</p>
+      {:else}
+        <ul class="sources">
+          {#each sources as source (source.id)}
+            <li>
+              <div class="row">
+                <span class="kind">{KIND_LABEL[source.kind]}</span>
+                <span class="name" title={source.filename}>{source.filename}</span>
+                <span class="status {source.status}">{STATUS_LABEL[source.status]}</span>
+                {#if !isOwner}
+                  <!-- Only the owner deletes files. -->
+                {:else if deleting === source.id}
+                  <span class="muted">Deleting…</span>
+                {:else if confirming === source.id}
+                  <span class="confirm">
+                    Delete?
+                    <button type="button" class="danger" onclick={() => remove(source)}
+                      >Delete</button
+                    >
+                    <button type="button" class="link" onclick={() => (confirming = null)}
+                      >Cancel</button
+                    >
+                  </span>
+                {:else}
+                  <button type="button" class="link" onclick={() => (confirming = source.id)}
+                    >Delete</button
+                  >
+                {/if}
+              </div>
+              <small class="muted"
+                >{formatSize(source.size)} · added {dateFormat.format(
+                  new Date(source.createdAt),
+                )}</small
+              >
+              {#if source.status === 'failed' && source.error}<p class="error">
+                  {source.error}
+                </p>{/if}
+              {#if rowErrors[source.id]}<p class="error">{rowErrors[source.id]}</p>{/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if canUpload}<small class="muted">{UPLOAD_NOTE}</small>{/if}
+    </Popover>
+  {/if}
+
+  {#if isOwner}
+    <button
+      type="button"
+      class="icon-button"
+      aria-label="Edit name and description"
+      title="Edit name and description"
+      onclick={() => editDialog?.open(data.cairn)}
     >
-      <p>Drop text, Markdown, PDF, CSV, JSON or image files here</p>
-      <button type="button" onclick={() => fileInput?.click()}>Choose files</button>
+      <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+        ><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></svg
+      >
+    </button>
+  {/if}
+
+  {#if !sealed}
+    {#if canUpload}
+      <button
+        type="button"
+        class="icon-button"
+        aria-label="Attach files"
+        title="Attach files"
+        onclick={() => fileInput?.click()}
+      >
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
+          ><path
+            d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
+          /></svg
+        >
+      </button>
       <input
         bind:this={fileInput}
         type="file"
@@ -207,83 +313,59 @@
           e.currentTarget.value = '';
         }}
       />
-      <small class="muted"
-        >Up to 25 MB each. Images and scanned PDF pages are read by the AI model, which takes a few
-        seconds per page.</small
-      >
-    </div>
+    {/if}
   {/if}
 
-  {#if uploads.length}
-    <ul class="uploads">
-      {#each uploads as upload (upload.key)}
-        <li class:failed={upload.error}>
-          <span class="name">{upload.name}</span>
-          {#if upload.error}
-            <span class="error">{upload.error}</span>
-            <button type="button" class="link" onclick={() => dismiss(upload.key)}>Dismiss</button>
-          {:else}
-            <progress max="1" value={upload.progress}></progress>
-          {/if}
-        </li>
-      {/each}
-    </ul>
+  {#if isOwner}
+    <Popover label="Share">
+      {#snippet icon()}
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
+          ><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle
+            cx="18"
+            cy="19"
+            r="3"
+          /><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" /></svg
+        >
+      {/snippet}
+      <SharePanel cairnId={data.cairn.id} />
+    </Popover>
   {/if}
+</div>
 
-  <div class="sources-header">
-    <h2>Files</h2>
-    <span class="live {live}" title="Status updates">
-      {live === 'live'
-        ? 'Live'
-        : live === 'connecting'
-          ? 'Connecting…'
-          : live === 'busy'
-            ? 'Paused: Cairn is open in too many tabs'
-            : 'Disconnected, retrying'}
-    </span>
-  </div>
-
-  {#if sources.length === 0 && live === 'live'}
-    <p class="muted">No files yet.{canUpload ? ' Add some to build this cairn.' : ''}</p>
-  {:else}
-    <ul class="sources">
-      {#each sources as source (source.id)}
-        <li>
-          <div class="row">
-            <span class="kind">{KIND_LABEL[source.kind]}</span>
-            <span class="name" title={source.filename}>{source.filename}</span>
-            <span class="status {source.status}">{STATUS_LABEL[source.status]}</span>
-            {#if !isOwner}
-              <!-- Only the owner deletes files. -->
-            {:else if deleting === source.id}
-              <span class="muted">Deleting…</span>
-            {:else if confirming === source.id}
-              <span class="confirm">
-                Delete this file?
-                <button type="button" class="danger" onclick={() => remove(source)}>Delete</button>
-                <button type="button" class="link" onclick={() => (confirming = null)}
-                  >Cancel</button
-                >
-              </span>
-            {:else}
-              <button type="button" class="link" onclick={() => (confirming = source.id)}
-                >Delete</button
-              >
-            {/if}
-          </div>
-          <small class="muted"
-            >{formatSize(source.size)} · added {dateFormat.format(
-              new Date(source.createdAt),
-            )}</small
-          >
-          {#if source.status === 'failed' && source.error}<p class="error">{source.error}</p>{/if}
-          {#if rowErrors[source.id]}<p class="error">{rowErrors[source.id]}</p>{/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
+{#if live === 'busy' || live === 'lost'}
+  <p class="live {live}">{LIVE_LABEL[live]}</p>
 {/if}
 
-{#if isOwner}
-  <SharePanel cairnId={data.cairn.id} />
+{#if uploads.length}
+  <ul class="uploads">
+    {#each uploads as upload (upload.key)}
+      <li class:failed={upload.error}>
+        <span class="name">{upload.name}</span>
+        {#if upload.error}
+          <span class="error">{upload.error}</span>
+          <button type="button" class="link" onclick={() => dismiss(upload.key)}>Dismiss</button>
+        {:else}
+          <progress max="1" value={upload.progress}></progress>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+{/if}
+
+<AskPanel
+  cairnId={data.cairn.id}
+  readySources={sources.filter((s) => s.status === 'ready').length}
+  {sealed}
+  onattach={canUpload && !sealed ? () => fileInput?.click() : undefined}
+/>
+
+{#if isOwner}<CairnDialog bind:this={editDialog} />{/if}
+
+{#if dragging}
+  <div class="drop-overlay" aria-hidden="true">
+    <div>
+      <strong>Drop files to add them to {data.cairn.name}</strong>
+      <small>{UPLOAD_NOTE}</small>
+    </div>
+  </div>
 {/if}

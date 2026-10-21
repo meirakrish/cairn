@@ -10,6 +10,7 @@ import {
   SourceResponse,
   type Cairn,
   type CreateCairnRequest,
+  type UpdateCairnRequest,
   type CreateShareRequest,
   type Share,
   type Source,
@@ -60,6 +61,10 @@ export async function listCairns(fetch: Fetch): Promise<Cairn[]> {
 
 export async function createCairn(input: CreateCairnRequest): Promise<Cairn> {
   return CairnResponse.parse(await request(fetch, 'POST', '/api/cairns', input)).cairn;
+}
+
+export async function updateCairn(id: string, input: UpdateCairnRequest): Promise<Cairn> {
+  return CairnResponse.parse(await request(fetch, 'PATCH', `/api/cairns/${id}`, input)).cairn;
 }
 
 export async function getCairn(fetch: Fetch, id: string): Promise<Cairn> {

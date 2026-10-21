@@ -1,6 +1,6 @@
 import type { Share } from '@cairn/shared';
 import { describe, expect, it } from 'vitest';
-import { describeShare, expiryDate, sharedBadge } from './share';
+import { accessLabel, describeShare, expiryDate, sharedBadge } from './share';
 
 const NOW = Date.parse('2026-10-21T12:00:00Z');
 
@@ -60,5 +60,13 @@ describe('sharedBadge', () => {
     expect(sharedBadge({ role: 'owner', visibility: 'cited' })).toBeUndefined();
     expect(sharedBadge({ role: 'viewer', visibility: 'sealed' })).toBe('Shared · sources hidden');
     expect(sharedBadge({ role: 'editor', visibility: 'cited' })).toBe('Shared · editor');
+  });
+});
+
+describe('accessLabel', () => {
+  it('says what a shared cairn allows', () => {
+    expect(accessLabel({ role: 'editor', visibility: 'cited' })).toBe('can add files');
+    expect(accessLabel({ role: 'viewer', visibility: 'cited' })).toBe('can ask');
+    expect(accessLabel({ role: 'viewer', visibility: 'sealed' })).toBe('answers only');
   });
 });

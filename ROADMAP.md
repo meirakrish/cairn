@@ -236,7 +236,7 @@ Step 5 as built:
 - `askQuestion(cairnId, question, sealed, …)` parses `SealedAnswerEvent` for sealed cairns; AskPanel enables asking for sealed callers without a ready-files count (they can't see files).
 - Merged (PRs #18–#22) on 2026-10-21.
 
-## Phase 5: more file types (done once step 6 is merged)
+## Phase 5: more file types (done)
 
 | Step | What                                                                                                           | Status | Branch                     |
 | ---- | -------------------------------------------------------------------------------------------------------------- | ------ | -------------------------- |
@@ -312,10 +312,52 @@ Step 6 as built:
 
   New types under hybrid: CSV, image and scan 2/2 at rank 1; JSON `json-returns` at rank 4 (the shop's root fields share a chunk with the first orders). Vector alone now has the better MRR (0.79 vs 0.74) but misses one question in the top 8; worth a tuning pass (keyword weight, or a reranker) later.
 
+## Phase 6: new web layout (done)
+
+Design (agreed 2026-10-21): https://claude.ai/artifact/D5rQ4E9aYp3Wv8jRmYoHzS (two screens: the cairn page, and the share popover).
+
+| Step | What                                                                                                                                   | Status | Branch              |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------- |
+| 1    | App shell: sidebar with logo, New cairn, cairns (yours / shared with you) and the account menu; paged cairn list on the home page      | done   | `phase6/web-layout` |
+| 2    | Cairn header icons: attach (file picker), files (count, opens the file list), share (popover with the share form); drop files anywhere | done   | `phase6/web-layout` |
+| 3    | Question box with its own attach icon; phone width (sidebar behind a menu button); dark mode pass                                      | done   | `phase6/web-layout` |
+
+Plan decisions:
+
+- Web only, except editing a cairn (`PATCH`, below). The sidebar uses `GET /api/cairns` (it already returns shared cairns with `role`/`visibility`), loaded once in the root layout and refreshed with `invalidateAll()`.
+- The design's "shared" icon on your own shared cairns needs a share count from the api; left out for now.
+- Menus and popovers close on Escape and on a click outside; no browser dialogs (as before).
+
+Step 1 as built:
+
+- Root layout loads `user` and `cairns` (the home page has no loader now). Signed in: `.topbar` (logo, `AccountMenu`) over `.shell` = `Sidebar` + `main`; signed out: `main` only.
+- `src/lib/AccountMenu.svelte`: avatar (or initial) + name + chevron; `role="menu"` with name, email, Sign out; closes on Escape / click outside. Sign out goes to `/` and `invalidateAll()`.
+- `src/lib/Sidebar.svelte`: New cairn button (opens `NewCairnDialog`: a modal `<dialog>` with `showModal()`, rendered in the layout, outside the drawer, so the drawer's `visibility: hidden` can't hide it; backdrop click / Escape / Cancel close it; creating opens the new cairn), "Your cairns" (role owner) and "Shared with you" with `accessLabel()` (`can add files` / `can ask` / `answers only`, in `share.ts`); current cairn highlighted (`aria-current`).
+- Home page is an empty state ("Pick a cairn" / "No cairns yet"); the cairn page lost its back link.
+- CSS: the old global `header` rule (which also styled the passage popup's header) is now `.topbar`; icon SVGs use `svg.icon` (stroke, no fill) so the logo is untouched.
+
+Step 2 as built:
+
+- `src/lib/Popover.svelte`: icon button (optional count) + panel; Escape / click outside closes (a click whose target was removed by a re-render counts as inside).
+- Cairn page header: title/badge/description, then Files popover (count; live status, file list with delete, upload note), Attach button (hidden file input), Share popover (`SharePanel`, owner only). Sealed callers get no icons (owners are never sealed).
+- Dropzone removed: drop files anywhere (window drag events with a depth counter, overlay "Drop files to add them to …"); callers who can't upload still get `preventDefault` so a dropped file doesn't replace the page. Upload progress rows and "Paused"/"Disconnected" show under the header.
+
+Step 3 as built (steps 1–3 grew together in shared files, so they went in as one branch, `phase6/web-layout`, instead of one per step):
+
+- `AskPanel`: the question box stays above the answer (tried pinning it to the bottom of the page; the user preferred it on top). The box: optional paperclip (`onattach` prop; the cairn page passes it for callers who can upload), textarea, Ask/Stop; one hint line under it (Searching…/Writing…, the sealed note, or the Enter/drop hint).
+- Sidebar: sticky, the window tall; the lists scroll and New cairn sits at the bottom.
+- Global `[hidden] { display: none !important }`: the `input { display: block }` rule overrode `hidden` on the file input (it showed in the header and pushed Share to a new line).
+- ≤ 48rem: a menu button in the top bar opens the sidebar as a drawer (fixed, slides in, `visibility` hidden when closed so it isn't focusable) with a backdrop button; closes on Escape, backdrop and navigation (`afterNavigate`). Popover panels span the screen there.
+- Softer look (user asked for fewer straight lines and boundaries): new tokens `--ground` (page), `--surface` (filled items), `--line` (the few hairlines left). Top bar and sidebar sit on the ground with no borders; `main` is a rounded white panel (20px, faint shadow) whose children keep 48rem; file rows, upload rows, the ask box, icon buttons, kind tags and badges are filled shapes instead of outlines; popovers, menu and dialog are rounded with a soft shadow; the passage is a tinted rounded block (no left bar). Inputs and selects keep a border (they need a visible edge). The "Your cairns" heading is gone from the sidebar.
+- Edit a cairn (asked for during step 3): api `PATCH /api/cairns/:id` (`UpdateCairnRequest` = `CreateCairnRequest`: whole name + description), owner only (403 for grantees, 404 for strangers; RLS already lets only owners update); core `CairnService.update`. Web: `NewCairnDialog` became `CairnDialog` with `open(cairn?)` (new or edit); a pencil icon after Files (owner only) opens it; saving runs `invalidateAll()` so the page and sidebar update. First api change in Phase 6.
+- Sidebar redone as design option B (canvas row "Left side", agreed 2026-10-21): no top bar on wide screens; the sidebar is the whole left column: logo, a soft (tinted, left-aligned) New cairn button, the lists (current cairn = white chip; "Shared with you" in sentence case; access as plain muted text), and the account button at the bottom (full width, menu opens upwards). Everything shares one left edge (0.75rem gutter + 0.75rem item padding). `main` has a 0.75rem margin all round. ≤ 48rem: a slim top bar (menu button + logo) comes back; the sidebar's own logo is hidden there.
+- Home page (`/`, signed in) keeps the sidebar (hiding it there was tried and dropped) and lists all cairns (owned and shared, newest first) as cards (name, two-line description, shared badge, created date), 12 per page, client-side (`paginate()` in `src/lib/paging.ts`, tested); the page number is `?page=N` in the URL. New cairn stays in the sidebar only.
+- Dark mode: `--on-accent` / `--on-error` (dark text in dark mode) replace hard-coded `#fff` on accent and error fills (white on `#5fb98a` was ~2.3:1).
+
 ## Current layout
 
 ```
-apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me; routes `/`, `/cairns/[id]`, `/s/[token]` (share links), `+error.svelte`; src/lib/api.ts (incl. XHR upload, askQuestion, shares), src/lib/answer.ts, src/lib/AskPanel.svelte, src/lib/SharePanel.svelte, src/lib/share.ts, src/lib/app.css
+apps/web         SvelteKit 3 SPA (adapter-static, ssr=false); dev proxy /api → localhost:3000; root layout loads /api/auth/me + the cairn list and renders the shell (Sidebar + main panel; slim top bar ≤ 48rem); routes `/` (paged cairn cards), `/cairns/[id]`, `/s/[token]` (share links), `+error.svelte`; src/lib/api.ts (incl. XHR upload, askQuestion, shares, updateCairn), src/lib/answer.ts, src/lib/paging.ts, src/lib/AskPanel.svelte, src/lib/SharePanel.svelte, src/lib/Sidebar.svelte, src/lib/AccountMenu.svelte, src/lib/Popover.svelte, src/lib/CairnDialog.svelte, src/lib/share.ts, src/lib/app.css
 apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry vs fail), index.ts; dev with tsx watch, build with tsdown
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/query.ts (answers, SSE) + src/rate-limit.ts; src/shares.ts (share routes, link redeem); src/stream-limit.ts (StreamLimiter); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/eval    retrieval eval: corpus/, questions.json, src/run.ts (`pnpm eval`)
@@ -380,4 +422,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: merge Phase 5 step 6; then plan the next phase (DESIGN.md "Next stage": API keys, MCP server).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: merge `phase6/web-layout`; then DESIGN.md "Next stage" (API keys, MCP server); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

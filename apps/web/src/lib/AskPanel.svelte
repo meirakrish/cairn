@@ -4,11 +4,13 @@
   import { askQuestion } from './api';
 
   // Sealed: text-only answers, and no way to know which files are ready, so asking is always on.
+  // onattach: shown as a paperclip in the question box, for callers who can add files.
   let {
     cairnId,
     readySources,
     sealed = false,
-  }: { cairnId: string; readySources: number; sealed?: boolean } = $props();
+    onattach,
+  }: { cairnId: string; readySources: number; sealed?: boolean; onattach?: () => void } = $props();
 
   const canAsk = $derived(sealed || readySources > 0);
 
@@ -99,28 +101,50 @@
 
 <section class="ask" aria-label="Ask this cairn">
   <form onsubmit={ask}>
-    <textarea
-      bind:value={question}
-      {onkeydown}
-      rows="2"
-      maxlength="1000"
-      placeholder={canAsk
-        ? 'Ask a question about these files…'
-        : 'Add files and wait until they are ready to ask questions'}
-      disabled={!canAsk}></textarea>
-    <div class="actions">
+    <div class="ask-box">
+      {#if onattach}
+        <button
+          type="button"
+          class="icon-button attach"
+          aria-label="Attach files"
+          title="Attach files"
+          onclick={onattach}
+        >
+          <svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
+            ><path
+              d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
+            /></svg
+          >
+        </button>
+      {/if}
+      <textarea
+        bind:value={question}
+        {onkeydown}
+        rows="2"
+        maxlength="1000"
+        aria-label="Question"
+        placeholder={canAsk
+          ? 'Ask a question about these files…'
+          : 'Add files and wait until they are ready to ask questions'}
+        disabled={!canAsk}></textarea>
       {#if busy}
         <button type="button" onclick={stop}>Stop</button>
-        <span class="muted">{phase === 'searching' ? 'Searching…' : 'Writing…'}</span>
       {:else}
         <button class="primary" disabled={!canAsk || !question.trim()}>Ask</button>
-        <small class="muted">Enter to ask, Shift+Enter for a new line</small>
       {/if}
     </div>
+    <small class="muted">
+      {#if busy}
+        {phase === 'searching' ? 'Searching…' : 'Writing…'}
+      {:else if sealed}
+        Answers only: sources are not shown for this cairn.
+      {:else}
+        Enter to ask, Shift+Enter for a new line{onattach
+          ? '. Drop files anywhere to add them.'
+          : ''}
+      {/if}
+    </small>
   </form>
-  {#if sealed}
-    <p class="muted sealed-note">Answers only: sources are not shown for this cairn.</p>
-  {/if}
 
   {#if phase !== 'idle'}
     <article class="answer" aria-live="polite">

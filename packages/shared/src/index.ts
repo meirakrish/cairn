@@ -47,6 +47,10 @@ export const CreateCairnRequest = z.object({
 });
 export type CreateCairnRequest = z.infer<typeof CreateCairnRequest>;
 
+/** Renaming a cairn sends the whole name and description, as creating does. */
+export const UpdateCairnRequest = CreateCairnRequest;
+export type UpdateCairnRequest = CreateCairnRequest;
+
 export const CairnResponse = z.object({ cairn: Cairn });
 export type CairnResponse = z.infer<typeof CairnResponse>;
 

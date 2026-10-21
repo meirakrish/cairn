@@ -50,3 +50,9 @@ export function sharedBadge(cairn: Pick<Cairn, 'role' | 'visibility'>): string |
   if (cairn.role === 'editor') return 'Shared · editor';
   return cairn.visibility === 'sealed' ? 'Shared · sources hidden' : 'Shared · viewer';
 }
+
+/** The short access note beside a shared cairn in the sidebar. */
+export function accessLabel(cairn: Pick<Cairn, 'role' | 'visibility'>): string {
+  if (cairn.role === 'editor') return 'can add files';
+  return cairn.visibility === 'sealed' ? 'answers only' : 'can ask';
+}
