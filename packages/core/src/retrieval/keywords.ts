@@ -31,11 +31,31 @@ export function contentWords(text: string): Set<string> {
   return terms;
 }
 
+// Hebrew writes some words as prefixes: ו and, ה the, ב in, כ as, ל to, מ from, ש that, often stacked
+// (ובבית, "and in the house"). Up to three are dropped, keeping at least three letters of the word.
+// The `chunk_tsv` SQL function (migration 0013) applies the same rule to chunks; keep them in sync.
+const HEBREW_PREFIX = /^[והבכלמש]{1,3}/;
+const HEBREW_WORD = /^[\u05D0-\u05EA]+$/;
+const MIN_STEM = 3;
+
+/** ובבית → בבית, בית: the word without each run of leading prefix letters that leaves a stem. */
+export function hebrewVariants(word: string): string[] {
+  if (!HEBREW_WORD.test(word)) return [];
+  const prefix = HEBREW_PREFIX.exec(word)?.[0] ?? '';
+  const variants: string[] = [];
+  for (let k = 1; k <= prefix.length && word.length - k >= MIN_STEM; k++) {
+    variants.push(word.slice(k));
+  }
+  return variants;
+}
+
 /**
  * Turns a question into an OR tsquery string ("deadline | filing"), or undefined when nothing is left.
- * Terms are letters and digits only, so the result is safe to pass to to_tsquery.
+ * Hebrew words bring their variants without prefixes. Terms are letters and digits only, so the result
+ * is safe to pass to to_tsquery.
  */
 export function keywordQuery(question: string): string | undefined {
-  const terms = [...contentWords(question)].slice(0, MAX_TERMS);
-  return terms.length ? terms.join(' | ') : undefined;
+  const words = [...contentWords(question)].slice(0, MAX_TERMS);
+  const terms = new Set(words.flatMap((w) => [w, ...hebrewVariants(w)]));
+  return terms.size ? [...terms].join(' | ') : undefined;
 }

@@ -1,10 +1,11 @@
 import type { Embedder } from '@meirakrish/llm-kit';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from '../cairns';
 import { EMBEDDING_DIMENSIONS } from '../db';
 import { SourceService } from '../sources';
 import { createTestDbs, createUser, resetDb } from '../testing';
-import { keywordQuery } from './keywords';
+import { contentWords, hebrewVariants, keywordQuery } from './keywords';
 import { embeddingQuery, RetrievalService } from './service';
 
 const { admin, app } = createTestDbs();
@@ -109,6 +110,27 @@ describe('RetrievalService.search', () => {
     expect(embedder.seen).toEqual([embeddingQuery('trail markers'), 'trail markers']);
   });
 
+  it('matches Hebrew words with and without prefixes or vowel points', async () => {
+    const { user, cairn } = await cairnWith([
+      'הספר נמצא ובבית הספר של העיר.',
+      'לחם צריך קמח, מים ומלח.',
+      'הַמִּשְׁפָּט נִדְחָה לַשָּׁנָה הַבָּאָה.',
+    ]);
+    const search = (q: string) => retrieval.search(user.id, cairn.id, q, { mode: 'keyword' });
+
+    expect((await search('בית')).map((h) => h.ordinal)).toEqual([0]); // ובבית in the text
+    expect((await search('לבית')).map((h) => h.ordinal)).toEqual([0]);
+    expect((await search('המלח')).map((h) => h.ordinal)).toEqual([1]); // ומלח
+    expect((await search('המשפט')).map((h) => h.ordinal)).toEqual([2]); // pointed in the text
+  });
+
+  it('ranks the exact Hebrew word above a prefix variant', async () => {
+    const { user, cairn } = await cairnWith(['הלכנו בשביל ההר.', 'שביל אחד בלבד.']);
+
+    const hits = await retrieval.search(user.id, cairn.id, 'שביל', { mode: 'keyword' });
+    expect(hits.map((h) => h.ordinal)).toEqual([1, 0]);
+  });
+
   it('finds exact identifiers by keyword', async () => {
     const { user, cairn } = await cairnWith(DOCS);
 
@@ -200,11 +222,41 @@ describe('keywordQuery', () => {
   });
 
   it('keeps Hebrew words whole, without their vowel points', () => {
-    expect(keywordQuery('מָה הַמּוֹעֵד שֶׁל הַהַגָּשָׁה?')).toBe('מה | המועד | של | ההגשה');
+    expect([...contentWords('מָה הַמּוֹעֵד שֶׁל הַהַגָּשָׁה?')]).toEqual([
+      'מה',
+      'המועד',
+      'של',
+      'ההגשה',
+    ]);
+  });
+
+  it('adds Hebrew words without their prefixes', () => {
+    expect(keywordQuery('ובבית')).toBe('ובבית | בבית | בית');
   });
 
   it('returns undefined when only common words remain', () => {
     expect(keywordQuery('What is it about?')).toBeUndefined();
     expect(keywordQuery('   ')).toBeUndefined();
+  });
+});
+
+describe('hebrewVariants', () => {
+  const WORDS = ['ובבית', 'בית', 'שלום', 'וכשהמלך', 'מים', 'hello', 'לא', 'ספר'];
+
+  it('drops up to three prefix letters, keeping a three-letter stem', () => {
+    expect(hebrewVariants('ובבית')).toEqual(['בבית', 'בית']);
+    expect(hebrewVariants('וכשהמלך')).toEqual(['כשהמלך', 'שהמלך', 'המלך']);
+    expect(hebrewVariants('בית')).toEqual([]);
+    expect(hebrewVariants('ספר')).toEqual([]);
+    expect(hebrewVariants('hello')).toEqual([]);
+  });
+
+  it('agrees with the SQL function that indexes chunks', async () => {
+    for (const word of WORDS) {
+      const [row] = await admin.db.execute<{ v: string }>(
+        sql`select hebrew_variants(${word}) as v`,
+      );
+      expect(row!.v.split(' ').filter(Boolean), word).toEqual(hebrewVariants(word));
+    }
   });
 });

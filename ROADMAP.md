@@ -535,12 +535,14 @@ Branch `phase13/hebrew` (from `main`). Asked for on 2026-10-21; more commits go 
 | ---- | ------------------------------------------------------------------------------------------------------------------------ | ------ |
 | 1    | Web: `dir="auto"` on user/document/model text, `<bdi>` for names inside English strings; CSS `left` → logical properties | done   |
 | 2    | core `contentWords`: strip Hebrew vowel points/cantillation before splitting, so pointed words stay whole                | done   |
+| 3    | Hebrew prefixes (ו ה ב כ ל מ ש) in keyword search: `chunk_tsv` SQL function (migration 0013) + `hebrewVariants` in core  | done   |
 
 As built:
 
 - UI chrome stays LTR (`<html lang="en">`); only content elements get `dir="auto"`. The links textarea stays LTR (URLs). `text-align: left` → `start`, `margin-left` → `margin-inline-start`; positioned `left`/`right` (sidebar, popovers) left physical.
 - Marks are stripped only for `\p{Script=Hebrew}` (`(?=\p{Script=Hebrew})\p{M}`): other scripts (Devanagari) spell with combining marks. `contentWords` also feeds quiz de-duplication.
-- Not done: pointed documents are still split in the chunks' tsvector (Postgres's parser treats marks as separators); fixing that needs a migration on the generated `tsv` column. Hebrew prefixes (ב/ה/ו/ל/מ/ש/כ) and Hebrew stopwords aren't handled; vector search covers most of it. Not yet checked in a browser or with a Hebrew eval set; some Hebrew PDFs may extract in reversed order.
+- Prefixes (step 3): a Hebrew word also yields itself without 1–3 leading prefix letters, keeping a stem of at least 3 letters (ובבית → בבית, בית; בית → nothing). Applied to both sides: `chunks.tsv` is now `chunk_tsv(content)` = the unpointed text at weight A `||` the variants at weight D, so exact words outrank variants; `keywordQuery` adds the same variants to the question (after `MAX_TERMS`). A test checks `hebrew_variants` (SQL) against `hebrewVariants` (TS); keep them in sync. Migration 0013 also strips niqqud from chunks (`hebrew_unpointed`), so pointed documents now match too. The SQL functions call each other schema-qualified (`public.`), since pg_restore recomputes generated columns with an empty search_path. Over-matching is accepted (המועד → ועד) and ranked low.
+- Not done: Hebrew stopwords (מה, של, את…); vector search and the D weight cover most of it. Not yet checked in a browser or with a Hebrew eval set; some Hebrew PDFs may extract in reversed order. Dev DB needs `pnpm db:migrate` for 0013 (rewrites every chunk's `tsv`).
 
 ## Current layout
 

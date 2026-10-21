@@ -92,6 +92,13 @@
       "when": 1792580277379,
       "tag": "0012_source_rejected",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792586325532,
+      "tag": "0013_hebrew_search",
+      "breakpoints": true
     }
   ]
 }
