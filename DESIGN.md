@@ -51,7 +51,7 @@ api, worker ──► llm-kit ──► Ollama (dev) / hosted provider (cloud)
 - **Auth**: Google OIDC handled by the server (`google-auth-library`). The session is an httpOnly cookie backed by Redis. No JWTs in localStorage.
 - **Ingest**: upload → original saved to Garage → BullMQ job → extract text → chunk (~600 tokens with overlap, keeping the page/section location) → embed → store in Postgres. Source status: `pending → processing → ready | failed`, sent over SSE.
 - **Query**: check access and mode → hybrid search (pgvector + `tsvector`, reciprocal rank fusion) → LLM answer streamed over SSE → sharing policy applied.
-- **Share**: with a Google account by email, or by a revocable link token with an optional expiry. Roles are `viewer` (query) and `editor` (add sources). The owner is implicit. The mode is `cited` or `sealed`.
+- **Share**: with a Google account by email, or by a revocable link token with an optional expiry. Links need sign-in; opening one records a redemption, so access always belongs to a user. Roles are `viewer` (query) and `editor` (add sources). The owner is implicit. The mode is `cited` or `sealed`.
 
 ## Sealed mode rules
 
@@ -72,10 +72,11 @@ users      (id, google_sub, email, name, avatar_url, created_at)
 cairns     (id, owner_id, name, description, embed_model, created_at)
 sources    (id, cairn_id, kind, filename, mime, storage_key, size, status, error, created_by, created_at)
 chunks     (id, cairn_id, source_id, ordinal, content, location jsonb, embedding vector(N), tsv tsvector)
-shares     (id, cairn_id, grantee_user_id?, grantee_email?, link_token?, role, visibility, allow_download,
-            expires_at, revoked_at, created_at)
+shares     (id, cairn_id, grantee_email?, link_token_hash?, role, visibility, expires_at, revoked_at,
+            created_by, created_at)
+share_redemptions (share_id, user_id, created_at)
 api_keys   (id, cairn_id, share_id, hashed_key, last_used_at)
-query_log  (id, cairn_id, actor, share_id, question, latency_ms, created_at)
+query_log  (id, cairn_id, user_id, share_id, question, chunk_count, latency_ms, created_at)
 ```
 
 - Every table that holds cairn data has a `cairn_id`. Postgres Row-Level Security enforces access.
