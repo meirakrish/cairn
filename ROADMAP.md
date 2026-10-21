@@ -554,12 +554,14 @@ Design: the model never writes SQL. It writes a small JSON **query plan** (filte
 
 | Step | What                                                                                                                                                                      | Status  |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 1    | Storage: `source_rows` (cairn_id, source_id, row, data jsonb; RLS like chunks) + `sources.columns` (name, type: number / date / text, inferred at ingest); migration 0014 | planned |
+| 1    | Storage: `source_rows` (cairn_id, source_id, row, data jsonb; RLS like chunks) + `sources.columns` (name, type: number / date / text, inferred at ingest); migration 0014 | done    |
 | 2    | Ingest: CSV and JSON/JSONL (flat records) also write rows and column types; chunks stay (lookups, keyword search); nested JSON keeps only its chunks                      | planned |
 | 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | planned |
 | 4    | core `TableQueryService`: router prompt (question + cairn's table schemas → plan or "passages"), run, then answer from the result; fall back to passages on a bad plan     | planned |
 | 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | planned |
 | 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | planned |
+
+Step 1 as built: migration 0014. `source_rows` has the same shape and RLS as `chunks` (composite FK to `sources(id, cairn_id)`, readable where the cairn is, writable by owners and editors, deleted with the source), unique on `(source_id, row)`; `row` is the same number the chunk locations use. `sources.columns` is `TableColumn[]` (`{ name, type }`, type `number` | `date` | `text`), null for non-tables. Nothing writes either yet (step 2); `src/db/source-rows-rls.test.ts` covers the policies. Dev DB is migrated.
 
 Open questions:
 
