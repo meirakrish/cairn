@@ -241,8 +241,8 @@ Step 5 as built:
 | Step | What                                                                                                           | Status | Branch                    |
 | ---- | -------------------------------------------------------------------------------------------------------------- | ------ | ------------------------- |
 | 1    | Cap open event streams at 3 per user (Redis lease set, 429 above it); web shows why live updates stopped       | done   | `phase5/step1-stream-cap` |
-| 2    | CSV ingest: delimiter sniffing, rows as `column: value` lines, header repeated per chunk, location = row range | next   |                           |
-| 3    | JSON / JSONL ingest: records as `path: value` lines, location = JSON path                                      | todo   |                           |
+| 2    | CSV ingest: delimiter sniffing, rows as `column: value` lines, header repeated per chunk, location = row range | done   | `phase5/step2-csv`        |
+| 3    | JSON / JSONL ingest: records as `path: value` lines, location = JSON path                                      | next   |                           |
 | 4    | Images (PNG, JPEG, WebP): resize, transcribe + describe with `qwen3.5:9b` vision, then chunk and embed         | todo   |                           |
 | 5    | Scanned PDFs: render pages without a text layer and transcribe them with the vision model                      | todo   |                           |
 | 6    | Web (new kinds, locations; no image previews for sealed callers) and eval questions for each new type          | todo   |                           |
@@ -260,6 +260,15 @@ Step 1 as built:
 - `close()` now catches `unsubscribe` and `release` failures (Redis gone at shutdown); found as an unhandled rejection in the new test. Also: ioredis `multi()` leaves per-command promises that reject unhandled when the connection drops, so `renew` is a script.
 - Web: the cairn page reads the stream with `fetch` + `sseData` instead of `EventSource` (which hides the status); 429 shows "Paused: Cairn is open in too many tabs" and retries after `Retry-After`; other failures back off 2 s → 30 s as before.
 
+Step 2 as built:
+
+- Kind `csv` (migration `0004_csv_kind`: the `sources_kind_check`), shared `SourceKind`; upload: `.csv`/`.tsv` + valid UTF-8 → `text/csv`. 415 text and the web dropzone/`accept` list CSV.
+- core `src/ingest/csv.ts`: `parseCsv` (RFC 4180: quoted delimiters, newlines, `""`; an unterminated quote → `PermanentIngestError`; a quote mid-field is literal), `sniffDelimiter` (`,` `;` tab `|`: the one giving ≥80% rows of the same width >1 in the first 64 KB / 50 rows, max rows×width; else `,`), `csvSegments` (first row = header; blank names → `column N`, duplicates → `name (2)`; each row → `column: value; …`, empty values dropped, empty rows skipped).
+- `src/ingest/records.ts` `packRecords(records, maxChars)`: whole rows packed into segments ≤ maxChars (a longer row stands alone and the chunker splits it); location `rows: [first, last]` (spreadsheet numbering, header = row 1). Reused by JSONL in step 3. `extract(kind, data, maxChars)` gets the chunk size for this.
+- `ChunkLocation.rows` (core + shared); `describeLocation` → `row 7` / `rows 2–40` (core prompt and web).
+- Tests: parser, sniffing, segments, packing, extract (BOM, CRLF), ingest end to end.
+- Live check pending: on 2026-10-21 Ollama on Windows failed with `llama-server binary not found` (its install is broken; reinstall/repair Ollama). The script is `/tmp/claude-1000/-home-meira-cairn/084921f8-e56a-42b0-8f49-ed0594e319c1/scratchpad/live-csv.mts` (copy into `apps/api/`, run with `node_modules/.bin/tsx live-csv.mts`).
+
 ## Current layout
 
 ```
@@ -268,7 +277,7 @@ apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/query.ts (answers, SSE) + src/rate-limit.ts; src/shares.ts (share routes, link redeem); src/stream-limit.ts (StreamLimiter); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/eval    retrieval eval: corpus/, questions.json, src/run.ts (`pnpm eval`)
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/shares.ts (ShareService, cairnAccess, hashShareToken); src/answer/ (AnswerService, buildMessages, citedNumbers); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, csv, records, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/shares.ts (ShareService, cairnAccess, hashShareToken); src/answer/ (AnswerService, buildMessages, citedNumbers); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -327,4 +336,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 5 step 2 (CSV).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 5 step 3 (JSON).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

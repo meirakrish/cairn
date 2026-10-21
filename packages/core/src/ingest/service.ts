@@ -51,10 +51,8 @@ export class IngestService {
       throw err;
     }
 
-    const chunks = chunkSegments(
-      await extract(source.kind, data),
-      this.deps.chunking ?? DEFAULT_CHUNKING,
-    );
+    const chunking = this.deps.chunking ?? DEFAULT_CHUNKING;
+    const chunks = chunkSegments(await extract(source.kind, data, chunking.maxChars), chunking);
     if (chunks.length === 0) throw new PermanentIngestError('no text found in the file');
 
     let vectors: number[][];

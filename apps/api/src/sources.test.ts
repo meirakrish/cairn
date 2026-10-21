@@ -91,7 +91,7 @@ describe('POST /api/cairns/:id/sources', () => {
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0]),
       'x.txt',
     ).expect(415);
-    expect(binary.body.error).toMatch(/text, Markdown and PDF/);
+    expect(binary.body.error).toMatch(/text, Markdown, PDF and CSV/);
     await upload(cookie, cairnId, '', 'empty.txt').expect(400);
     const big = await upload(cookie, cairnId, 'x'.repeat(1_000_001)).expect(413);
     expect(big.body.error).toMatch(/limited to 1 MB/);
