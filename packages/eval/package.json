@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "eval": "tsx --env-file-if-exists=../../.env src/run.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "eval:tables": "tsx --env-file-if-exists=../../.env src/tables.ts"
   },
   "dependencies": {
     "@cairn/core": "workspace:*",

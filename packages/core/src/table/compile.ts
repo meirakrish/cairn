@@ -165,7 +165,16 @@ export function compilePlan(
     sql` and `,
   );
   const matched = sql`select count(*)::int from source_rows where ${where}`;
-  const grouped = plan.groupBy.length > 0 || plan.aggregates.length > 0;
+  // A `select` with groupBy or with sum/avg/count has nothing to choose (the result is its groups and
+  // aggregates; small models copy the result's labels into it), so it is ignored rather than refused.
+  // A `select` with min/max and an ordering but no groupBy is a listing that picked up an aggregate
+  // ("the trail with the most cairns" as max + select + orderBy + limit 1): the rows it asks for.
+  const asksForRow =
+    plan.select.length > 0 &&
+    plan.orderBy.length > 0 &&
+    plan.aggregates.length > 0 &&
+    plan.aggregates.every((a) => a.fn === 'min' || a.fn === 'max');
+  const grouped = plan.groupBy.length > 0 || (plan.aggregates.length > 0 && !asksForRow);
 
   if (!grouped) {
     const shownColumns = plan.select.length
@@ -183,8 +192,6 @@ export function compilePlan(
     };
   }
 
-  if (plan.select.length)
-    throw new PlanError('select is for listing rows; remove it when grouping or aggregating');
   const groups = plan.groupBy.map((name) => resolveColumn(columns, name));
   const aggregates = plan.aggregates.length
     ? plan.aggregates.map(({ fn, column }) => {
@@ -232,11 +239,7 @@ export function compilePlan(
 /** `order by` items by output position (`offset` is the position of the first label). */
 function orderings(plan: TablePlan, labels: string[], offset: number): SQL[] {
   return plan.orderBy.map(({ by, direction }) => {
-    const wanted = by.trim().toLowerCase();
-    const i =
-      labels.findIndex((l) => l === by) >= 0
-        ? labels.findIndex((l) => l === by)
-        : labels.findIndex((l) => l.toLowerCase() === wanted);
+    const i = labelIndex(labels, by);
     if (i < 0) {
       throw new PlanError(
         `can't order by "${by}"; the result has ${labels.map((l) => `"${l}"`).join(', ')}`,
@@ -246,4 +249,18 @@ function orderings(plan: TablePlan, labels: string[], offset: number): SQL[] {
       ? sql`${position(i + offset)} desc nulls last`
       : sql`${position(i + offset)} asc nulls last`;
   });
+}
+
+/**
+ * The result column `by` names: exactly, ignoring case, or (for "order by cairns" when the result has
+ * max(cairns)) the one aggregate of that column. -1 when there is none or it is ambiguous.
+ */
+function labelIndex(labels: string[], by: string): number {
+  const wanted = by.trim().toLowerCase();
+  const exact = labels.findIndex((l) => l === by);
+  if (exact >= 0) return exact;
+  const loose = labels.findIndex((l) => l.toLowerCase() === wanted);
+  if (loose >= 0) return loose;
+  const aggregates = labels.flatMap((l, i) => (l.toLowerCase().endsWith(`(${wanted})`) ? [i] : []));
+  return aggregates.length === 1 ? aggregates[0]! : -1;
 }

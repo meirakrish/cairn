@@ -559,7 +559,7 @@ Design: the model never writes SQL. It writes a small JSON **query plan** (filte
 | 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | done    |
 | 4    | core `TableQueryService`: router prompt (question + cairn's table schemas → plan or "passages"), run, then answer from the result; fall back to passages on a bad plan     | done    |
 | 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | done    |
-| 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | planned |
+| 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | done    |
 
 Step 1 as built: migration 0014. `source_rows` has the same shape and RLS as `chunks` (composite FK to `sources(id, cairn_id)`, readable where the cairn is, writable by owners and editors, deleted with the source), unique on `(source_id, row)`; `row` is the same number the chunk locations use. `sources.columns` is `TableColumn[]` (`{ name, type }`, type `number` | `date` | `text`), null for non-tables. Nothing writes either yet (step 2); `src/db/source-rows-rls.test.ts` covers the policies. Dev DB is migrated.
 
@@ -585,6 +585,15 @@ Step 4 as built (`core/src/table/query.ts`, `prompt.ts`): `TableQueryService.att
 - Router prompt text lives in `ROUTER_PROMPT`; the file's text is escaped so a cell can't close `<tables>`.
 
 Step 5 as built: `apps/api` builds `AnswerService` with `TableQueryService(db, TableService(db), llm)`, so it is on for every cairn that has a table (the only api change). `CitedPassage` (shared) got an optional `query: { description, matched }`, set by `answer()` when the passage is a table result. Web: the open passage's header reads "Query over all rows: rows where Region = "West"; sum(Amount) · 3 rows matched", and the Sources list says "table query" instead of a location; the result itself shows as the passage text (`row | col | col` lines). Sealed callers still get text only. No row range is shown: matching rows of a listing are not contiguous, so they are listed by number in the text instead.
+
+Step 6 as built: `packages/eval` has a table eval, `pnpm eval:tables` (`src/tables.ts`, questions in `src/table-questions.ts`, needs Postgres and Ollama; no embeddings). It ingests `corpus/trails.csv` (120 rows) and a new `corpus/orders.jsonl` (60 flat records), asks 22 questions (19 for tables, 3 for passages) with the real chat model, and grades each three ways: **route** (right table, or passages), **result** (the query's values equal what the table's own rows give, computed in the eval), **answer** (the final text states them). Output goes to `results/tables-latest.json`, with what the router answered for each question.
+
+Live check with qwen3.5:9b (last run): route 22/22, result 14/18, answer 17/19. Every plan that asked for the right thing returned the right values; the misses are plans that asked for something else:
+- It adds a `groupBy` the question didn't ask for (the average length of the moderate trails, grouped by region), and sometimes a filter copied from the example rows (`status = "shipped"`).
+- It answers "which trail is longest" with `max` grouped by region, which has no trail name; a lookup came back as `count_distinct(trail_id)`.
+- Run to run, the same question can flip, since each prompt change moves other questions (temperature 0 only fixes one prompt).
+
+What the eval changed in core: grouped plans ignore a `select` (the model copied the result's labels into it, and a refusal didn't make it stop: it repeated the plan); `select` with only min/max aggregates and an `orderBy` is read as a listing ("the trail with the most cairns"); `orderBy: "cairns"` finds `max(cairns)` when that is the only aggregate of the column; the router prompt got worked examples (generic column names, not the eval's), "groupBy only for each/per/ranking", "filter only on stated conditions", "set limit high when listing". Before these, 16/22 routes (6 questions fell back to passages after two refused plans).
 
 Open questions:
 

@@ -167,6 +167,46 @@ describe('TableService.run: filtering and listing', () => {
     expect(await rows('o_der')).toEqual([]);
   });
 
+  it('ignores select when grouping, since the result is its groups and aggregates', async () => {
+    const { run } = await setup();
+
+    const result = await run({
+      groupBy: ['Region'],
+      select: ['Region', 'count'],
+      orderBy: [{ by: 'Region' }],
+    });
+    expect(result.columns).toEqual(['Region', 'count']);
+    expect(result.rows).toHaveLength(4);
+    expect(result.rows.slice(0, 2)).toEqual([
+      ['East', 2],
+      ['North', 1],
+    ]);
+  });
+
+  it('treats select with aggregates but no groupBy as a listing, and orders by a column for its aggregate', async () => {
+    const { run } = await setup();
+
+    const listing = await run({
+      aggregates: [{ fn: 'max', column: 'Amount' }],
+      select: ['Product', 'Amount'],
+      orderBy: [{ by: 'Amount', direction: 'desc' }],
+      limit: 1,
+    });
+    expect(listing.rows).toEqual([['Tent', 250]]);
+
+    // A sum with a stray select stays a sum.
+    const sum = await run({ aggregates: [{ fn: 'sum', column: 'Amount' }], select: ['Amount'] });
+    expect(sum.rows).toEqual([[530.5]]);
+
+    const grouped = await run({
+      groupBy: ['Product'],
+      aggregates: [{ fn: 'max', column: 'Amount' }],
+      orderBy: [{ by: 'Amount', direction: 'desc' }],
+      limit: 1,
+    });
+    expect(grouped.rows).toEqual([['Tent', 250]]);
+  });
+
   it('lists the selected columns in the order asked, with the limit', async () => {
     const { run } = await setup();
 
@@ -247,7 +287,6 @@ describe('TableService.run: refusing', () => {
       /needs one value/,
     ],
     ['an empty in', { filters: [{ column: 'Region', op: 'in', value: [] }] }, /needs a list/],
-    ['select with groupBy', { groupBy: ['Region'], select: ['Amount'] }, /remove it when grouping/],
     [
       'ordering by something not in the result',
       { groupBy: ['Region'], orderBy: [{ by: 'Amount' }] },
