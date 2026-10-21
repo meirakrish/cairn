@@ -1,5 +1,6 @@
-import { fakeEmbedder } from '@meirakrish/llm-kit/testing';
-import { ContextOverflowError } from '@meirakrish/llm-kit';
+import { fakeEmbedder, scriptedLlm } from '@meirakrish/llm-kit/testing';
+import sharp from 'sharp';
+import { ContextOverflowError, type LlmClient } from '@meirakrish/llm-kit';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from '../cairns';
 import { EMBEDDING_DIMENSIONS, type SourceKind } from '../db';
@@ -22,13 +23,14 @@ afterAll(async () => {
   await app.close();
 });
 
-function setup(embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS })) {
+function setup(embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS }), vision?: LlmClient) {
   const cairns = new CairnService(app.db, embedder.model);
   const ingest = new IngestService({
     cairns,
     sources,
     storage,
     embedder,
+    vision,
     chunking: { maxChars: 200, overlapChars: 40 },
   });
   return { cairns, ingest, embedder };
@@ -43,6 +45,7 @@ async function uploaded(cairns: CairnService, kind: SourceKind, data: Uint8Array
     pdf: 'application/pdf',
     csv: 'text/csv',
     json: 'application/json',
+    image: 'image/png',
   };
   const mime = mimes[kind];
   const source = await sources.create(user.id, cairn.id, {
@@ -95,6 +98,39 @@ describe('IngestService', () => {
     expect(chunks[0]!.location.rows![0]).toBe(2);
     expect(chunks.at(-1)!.location.rows![1]).toBe(61);
     for (const c of chunks) expect(c.content.length).toBeLessThanOrEqual(200);
+  });
+
+  it('stores the vision model’s description of an image', async () => {
+    const vision = scriptedLlm({
+      stream: [['Text in the image:\nGate code 7319\n\n', 'Description:\nA trail sign.']],
+    });
+    const { cairns, ingest } = setup(undefined, vision);
+    const png = await sharp({
+      create: { width: 40, height: 20, channels: 3, background: '#888888' },
+    })
+      .png()
+      .toBuffer();
+    const { user, source } = await uploaded(cairns, 'image', png);
+
+    expect(await ingest.process(user.id, source.id)).toEqual({ status: 'ready', chunks: 1 });
+    const [chunk] = await sources.listChunks(user.id, source.id);
+    expect(chunk).toMatchObject({
+      content: 'Text in the image:\nGate code 7319\n\nDescription:\nA trail sign.',
+      location: {},
+    });
+    expect(vision.calls).toHaveLength(1);
+  });
+
+  it('fails images permanently without a vision model, or when unreadable', async () => {
+    const { cairns, ingest } = setup();
+    const { user, source } = await uploaded(cairns, 'image', utf8('not really a png'));
+    await expect(ingest.process(user.id, source.id)).rejects.toThrow(/need a vision model/);
+
+    const withVision = setup(undefined, scriptedLlm());
+    const broken = await uploaded(withVision.cairns, 'image', utf8('not really a png'));
+    await expect(withVision.ingest.process(broken.user.id, broken.source.id)).rejects.toThrow(
+      PermanentIngestError,
+    );
   });
 
   it('keeps PDF page numbers', async () => {

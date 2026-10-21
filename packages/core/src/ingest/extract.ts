@@ -24,6 +24,8 @@ export async function extract(
   data: Uint8Array,
   maxChars = DEFAULT_CHUNKING.maxChars,
 ): Promise<Segment[]> {
+  // Images need a model; IngestService reads them (describeImage).
+  if (kind === 'image') throw new Error('extract() does not read images');
   const segments =
     kind === 'pdf'
       ? await extractPdf(data)

@@ -73,10 +73,22 @@ const MARKDOWN_EXTENSIONS = /\.(md|markdown)$/i;
 const CSV_EXTENSIONS = /\.(csv|tsv)$/i;
 const JSON_EXTENSIONS = /\.(json|jsonl|ndjson)$/i;
 
+// Image signatures; the extension doesn't matter.
+const startsWith = (data: Buffer, bytes: number[], at = 0) =>
+  data.length >= at + bytes.length && bytes.every((b, i) => data[at + i] === b);
+const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
+
+function imageMime(data: Buffer): string | undefined {
+  if (startsWith(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+  if (startsWith(data, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+  if (startsWith(data, ascii('RIFF')) && startsWith(data, ascii('WEBP'), 8)) return 'image/webp';
+  return undefined;
+}
+
 /**
- * Decides the kind from the bytes, not the client's Content-Type: a PDF signature, or valid UTF-8 text
- * (Markdown, CSV or JSON by extension). Anything else, including binary formats renamed to .txt, is
- * unsupported.
+ * Decides the kind from the bytes, not the client's Content-Type: a PDF or image (PNG, JPEG, WebP)
+ * signature, or valid UTF-8 text (Markdown, CSV or JSON by extension). Anything else, including
+ * binary formats renamed to .txt, is unsupported.
  */
 export function detectKind(
   filename: string,
@@ -84,6 +96,8 @@ export function detectKind(
 ): { kind: SourceKind; mime: string } | undefined {
   // PDF readers accept the header anywhere in the first 1 KB.
   if (data.subarray(0, 1024).includes('%PDF-')) return { kind: 'pdf', mime: 'application/pdf' };
+  const image = imageMime(data);
+  if (image) return { kind: 'image', mime: image };
   if (data.includes(0)) return undefined;
   try {
     new TextDecoder('utf-8', { fatal: true }).decode(data);

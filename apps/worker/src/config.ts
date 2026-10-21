@@ -1,5 +1,5 @@
 import { EMBEDDING_DIMENSIONS } from '@cairn/core';
-import { resolveEmbedConfig } from '@meirakrish/llm-kit';
+import { resolveEmbedConfig, resolveLlmConfig } from '@meirakrish/llm-kit';
 import { z } from 'zod';
 
 const Env = z.object({
@@ -17,7 +17,8 @@ const Env = z.object({
 
 export type Config = ReturnType<typeof loadConfig>;
 
-// No OAuth or session settings: the worker only needs Postgres, Redis, object storage and the embedder.
+// No OAuth or session settings: the worker only needs Postgres, Redis, object storage, the embedder
+// and the chat model (LLM_*, for reading images; it must support vision).
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const e = Env.parse(env);
   if (e.EMBED_DIMENSIONS !== undefined && e.EMBED_DIMENSIONS !== EMBEDDING_DIMENSIONS) {
@@ -37,5 +38,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       secretAccessKey: e.S3_SECRET_ACCESS_KEY,
     },
     embed: resolveEmbedConfig({ dimensions: EMBEDDING_DIMENSIONS }, env),
+    llm: resolveLlmConfig({}, env),
   };
 }

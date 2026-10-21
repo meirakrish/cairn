@@ -43,6 +43,13 @@
       "when": 1792563498921,
       "tag": "0005_json_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792563854039,
+      "tag": "0006_image_kind",
+      "breakpoints": true
     }
   ]
 }

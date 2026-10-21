@@ -1,4 +1,4 @@
-import type { Embedder } from '@meirakrish/llm-kit';
+import type { Embedder, LlmClient } from '@meirakrish/llm-kit';
 import { isContextOverflow, ContextOverflowError } from '@meirakrish/llm-kit';
 import type { CairnService } from '../cairns';
 import { NotFoundError } from '../errors';
@@ -6,13 +6,16 @@ import type { SourceService } from '../sources';
 import type { ObjectStore } from '../storage';
 import { chunkSegments, DEFAULT_CHUNKING, type ChunkOptions } from './chunk';
 import { PermanentIngestError } from './errors';
-import { extract } from './extract';
+import { extract, type Segment } from './extract';
+import { describeImage } from './image';
 
 export interface IngestDeps {
   cairns: CairnService;
   sources: SourceService;
   storage: ObjectStore;
   embedder: Embedder;
+  /** Reads images (transcription + description); without it, image sources fail. */
+  vision?: LlmClient;
   chunking?: ChunkOptions;
 }
 
@@ -52,7 +55,11 @@ export class IngestService {
     }
 
     const chunking = this.deps.chunking ?? DEFAULT_CHUNKING;
-    const chunks = chunkSegments(await extract(source.kind, data, chunking.maxChars), chunking);
+    const segments =
+      source.kind === 'image'
+        ? await this.readImage(data)
+        : await extract(source.kind, data, chunking.maxChars);
+    const chunks = chunkSegments(segments, chunking);
     if (chunks.length === 0) throw new PermanentIngestError('no text found in the file');
 
     let vectors: number[][];
@@ -77,5 +84,12 @@ export class IngestService {
       throw err;
     }
     return { status: 'ready', chunks: chunks.length };
+  }
+
+  private async readImage(data: Uint8Array): Promise<Segment[]> {
+    if (!this.deps.vision) {
+      throw new PermanentIngestError('images need a vision model, and the worker has none');
+    }
+    return [{ text: await describeImage(this.deps.vision, data), location: {} }];
   }
 }
