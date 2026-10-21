@@ -466,12 +466,15 @@
 
 <!-- Kept mounted (hidden) while you look at the sources, so an answer or a quiz isn't lost. -->
 <div hidden={mode !== 'ask'}>
-  <AskPanel
-    cairnId={data.cairn.id}
-    readySources={sources.filter((s) => s.status === 'ready').length}
-    {sealed}
-    canDrop={canUpload && !sealed}
-  />
+  <!-- Another cairn starts with an empty question box and no answer (and stops a running one). -->
+  {#key data.cairn.id}
+    <AskPanel
+      cairnId={data.cairn.id}
+      readySources={sources.filter((s) => s.status === 'ready').length}
+      {sealed}
+      canDrop={canUpload && !sealed}
+    />
+  {/key}
 </div>
 {#if quizOpened && !sealed}
   <!-- A new cairn starts a new quiz. -->

@@ -502,6 +502,8 @@ Festive results (2026-10-21): a right answer shows "Right 🎉" with a confetti 
 
 Add web pages form (2026-10-21): it closes by itself once every link was added (`AddLinks` `ondone`; links that fail keep it open with their messages), and it is closed whenever the Sources page opens.
 
+Ask box per cairn (2026-10-21): `AskPanel` is keyed by the cairn id like `QuizPanel`, so a typed question, an answer on screen or a running answer no longer follow you to another cairn.
+
 ## Current layout
 
 ```
