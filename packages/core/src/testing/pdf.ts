@@ -1,3 +1,12 @@
+/**
+ * A page of text runs placed by hand, each drawn left to right from (x, y) in 12pt with every
+ * character 7.2pt wide. Hebrew letters work (in visual order, as older PDF tools write them):
+ * they use a font that names its glyphs, which is how pdf.js knows them.
+ */
+export interface RunsPage {
+  runs: { x: number; y: number; text: string }[];
+}
+
 /** A page that is only a JPEG image, scaled to fill the page, like a scanned page. */
 export interface ImagePage {
   jpeg: Uint8Array;
@@ -7,10 +16,10 @@ export interface ImagePage {
 
 /**
  * A minimal valid PDF, one entry per page. A string is text (Helvetica, ASCII only; newlines start
- * new lines; an empty string makes a blank page); an ImagePage is a page with only an image, like a
- * scanned page with no text layer.
+ * new lines; an empty string makes a blank page); a RunsPage is text placed run by run; an ImagePage
+ * is a page with only an image, like a scanned page with no text layer.
  */
-export function makePdf(pages: (string | ImagePage)[]): Uint8Array {
+export function makePdf(pages: (string | RunsPage | ImagePage)[]): Uint8Array {
   // Objects are byte arrays: image streams are binary, so the file can't be built as a string.
   const objects: Uint8Array[] = [];
   const latin1 = (s: string) => Uint8Array.from(s, (c) => c.charCodeAt(0));
@@ -22,6 +31,13 @@ export function makePdf(pages: (string | ImagePage)[]): Uint8Array {
   const catalog = add(''); // filled in once the page tree exists
   const tree = add('');
   const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  // Codes 0xC0–0xDA are א–ת (glyphs afii57664–afii57690); every glyph is 600/1000 em wide.
+  const hebrewGlyphs = Array.from({ length: 27 }, (_, i) => `/afii${57664 + i}`).join(' ');
+  const hebrewFont = add(
+    `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 32 /LastChar 218 ` +
+      `/Widths [${Array.from({ length: 187 }, () => 600).join(' ')}] ` +
+      `/Encoding << /Type /Encoding /Differences [192 ${hebrewGlyphs}] >> >>`,
+  );
   const kids = pages.map((page) => {
     let resources: string;
     let ops: string;
@@ -32,6 +48,18 @@ export function makePdf(pages: (string | ImagePage)[]): Uint8Array {
         .join(' T* ');
       ops = page ? `BT /F1 11 Tf 14 TL 72 740 Td ${lines} ET` : '';
       resources = `/Font << /F1 ${font} 0 R >>`;
+    } else if ('runs' in page) {
+      const encode = (text: string) =>
+        [...text]
+          .map((c) =>
+            c >= 'א' && c <= 'ת' ? String.fromCharCode(0xc0 + c.charCodeAt(0) - 0x5d0) : c,
+          )
+          .join('')
+          .replace(/[\\()]/g, (c) => `\\${c}`);
+      ops = page.runs
+        .map((r) => `BT /F1 12 Tf ${r.x} ${r.y} Td (${encode(r.text)}) Tj ET`)
+        .join(' ');
+      resources = `/Font << /F1 ${hebrewFont} 0 R >>`;
     } else {
       const image = add(
         stream(

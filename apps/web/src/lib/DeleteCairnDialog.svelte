@@ -49,7 +49,8 @@
   <form class="create" {onsubmit}>
     <h2 id="delete-cairn-title">Delete cairn</h2>
     <p>
-      Delete “{cairn?.name}” with all its files, shares and quiz history? This can't be undone.
+      Delete “<bdi>{cairn?.name}</bdi>” with all its files, shares and quiz history? This can't be
+      undone.
     </p>
     {#if error}<p class="error">{error}</p>{/if}
     <div class="actions">

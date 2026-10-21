@@ -45,7 +45,7 @@
             <a
               href={resolve('/cairns/[id]', { id: cairn.id })}
               class:current
-              aria-current={current ? 'page' : undefined}>{cairn.name}</a
+              aria-current={current ? 'page' : undefined}><bdi>{cairn.name}</bdi></a
             >
           </li>
         {/each}
@@ -62,7 +62,8 @@
               href={resolve('/cairns/[id]', { id: cairn.id })}
               class:current
               aria-current={current ? 'page' : undefined}
-              ><span class="name">{cairn.name}</span><span class="access">{accessLabel(cairn)}</span
+              ><span class="name" dir="auto">{cairn.name}</span><span class="access"
+                >{accessLabel(cairn)}</span
               ></a
             >
           </li>

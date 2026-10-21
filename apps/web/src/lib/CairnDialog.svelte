@@ -54,11 +54,17 @@
     <h2 id="cairn-dialog-title">{editing ? 'Edit cairn' : 'New cairn'}</h2>
     <label>
       Name
-      <input bind:value={name} required maxlength="100" placeholder="e.g. Tax documents" />
+      <input
+        bind:value={name}
+        dir="auto"
+        required
+        maxlength="100"
+        placeholder="e.g. Tax documents"
+      />
     </label>
     <label>
       Description <span class="muted">(optional)</span>
-      <textarea bind:value={description} maxlength="1000" rows="3"></textarea>
+      <textarea bind:value={description} dir="auto" maxlength="1000" rows="3"></textarea>
     </label>
     {#if error}<p class="error">{error}</p>{/if}
     <div class="actions">

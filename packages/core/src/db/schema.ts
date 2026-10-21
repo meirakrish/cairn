@@ -146,10 +146,11 @@ export const chunks = pgTable(
     // Where the chunk came from, e.g. { page: 3 } or { headings: ['Setup', 'Install'] }.
     location: jsonb('location').$type<ChunkLocation>().notNull().default({}),
     embedding: vector('embedding', { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
-    // 'simple' does no stemming or stop words, so it works for any language.
+    // 'simple' does no stemming or stop words, so it works for any language. chunk_tsv (migration
+    // 0013) also drops Hebrew vowel points and adds Hebrew words without their prefixes, ranked lower.
     tsv: tsvector('tsv')
       .notNull()
-      .generatedAlwaysAs(sql`to_tsvector('simple', content)`),
+      .generatedAlwaysAs(sql`chunk_tsv(content)`),
   },
   (t) => [
     foreignKey({

@@ -1,0 +1,1249 @@
+{
+  "id": "e3745e4a-ef33-46f7-a187-4d809332aec2",
+  "prevId": "bc18511f-038a-40cc-a6b6-18093d6d5d9e",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.cairns": {
+      "name": "cairns",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "embed_model": {
+          "name": "embed_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cairns_owner_id_idx": {
+          "name": "cairns_owner_id_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cairns_owner_id_users_id_fk": {
+          "name": "cairns_owner_id_users_id_fk",
+          "tableFrom": "cairns",
+          "tableTo": "users",
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "cairns_read": {
+          "name": "cairns_read",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["public"],
+          "using": "\"cairns\".\"owner_id\" = nullif(current_setting('app.user_id', true), '')::uuid or exists (select 1 from cairn_access(\"cairns\".\"id\"))"
+        },
+        "cairns_insert": {
+          "name": "cairns_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": ["public"],
+          "withCheck": "\"cairns\".\"owner_id\" = nullif(current_setting('app.user_id', true), '')::uuid"
+        },
+        "cairns_update": {
+          "name": "cairns_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": ["public"],
+          "using": "\"cairns\".\"owner_id\" = nullif(current_setting('app.user_id', true), '')::uuid",
+          "withCheck": "\"cairns\".\"owner_id\" = nullif(current_setting('app.user_id', true), '')::uuid"
+        },
+        "cairns_delete": {
+          "name": "cairns_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": ["public"],
+          "using": "\"cairns\".\"owner_id\" = nullif(current_setting('app.user_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chunks": {
+      "name": "chunks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cairn_id": {
+          "name": "cairn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "location": {
+          "name": "location",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1024)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tsv": {
+          "name": "tsv",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "chunk_tsv(content)",
+            "type": "stored"
+          }
+        }
+      },
+      "indexes": {
+        "chunks_cairn_id_idx": {
+          "name": "chunks_cairn_id_idx",
+          "columns": [
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chunks_embedding_idx": {
+          "name": "chunks_embedding_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        },
+        "chunks_tsv_idx": {
+          "name": "chunks_tsv_idx",
+          "columns": [
+            {
+              "expression": "tsv",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "chunks_source_fk": {
+          "name": "chunks_source_fk",
+          "tableFrom": "chunks",
+          "tableTo": "sources",
+          "columnsFrom": ["source_id", "cairn_id"],
+          "columnsTo": ["id", "cairn_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "chunks_source_ordinal_key": {
+          "name": "chunks_source_ordinal_key",
+          "nullsNotDistinct": false,
+          "columns": ["source_id", "ordinal"]
+        }
+      },
+      "policies": {
+        "chunks_read": {
+          "name": "chunks_read",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["public"],
+          "using": "exists (select 1 from cairns c where c.id = \"chunks\".\"cairn_id\")"
+        },
+        "chunks_insert": {
+          "name": "chunks_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": ["public"],
+          "withCheck": "exists (select 1 from cairn_access(\"chunks\".\"cairn_id\") a where a.role in ('owner', 'editor'))"
+        },
+        "chunks_update": {
+          "name": "chunks_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": ["public"],
+          "using": "exists (select 1 from cairn_access(\"chunks\".\"cairn_id\") a where a.role in ('owner', 'editor'))",
+          "withCheck": "exists (select 1 from cairn_access(\"chunks\".\"cairn_id\") a where a.role in ('owner', 'editor'))"
+        },
+        "chunks_delete": {
+          "name": "chunks_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": ["public"],
+          "using": "exists (select 1 from cairn_access(\"chunks\".\"cairn_id\") a where a.role in ('owner', 'editor'))"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.query_log": {
+      "name": "query_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cairn_id": {
+          "name": "cairn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "share_id": {
+          "name": "share_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "question": {
+          "name": "question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chunk_count": {
+          "name": "chunk_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "latency_ms": {
+          "name": "latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "query_log_cairn_id_idx": {
+          "name": "query_log_cairn_id_idx",
+          "columns": [
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "query_log_cairn_id_cairns_id_fk": {
+          "name": "query_log_cairn_id_cairns_id_fk",
+          "tableFrom": "query_log",
+          "tableTo": "cairns",
+          "columnsFrom": ["cairn_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "query_log_user_id_users_id_fk": {
+          "name": "query_log_user_id_users_id_fk",
+          "tableFrom": "query_log",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "query_log_share_id_shares_id_fk": {
+          "name": "query_log_share_id_shares_id_fk",
+          "tableFrom": "query_log",
+          "tableTo": "shares",
+          "columnsFrom": ["share_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "query_log_read": {
+          "name": "query_log_read",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["public"],
+          "using": "\"query_log\".\"user_id\" = nullif(current_setting('app.user_id', true), '')::uuid or exists (select 1 from cairns c where c.id = \"query_log\".\"cairn_id\" and c.owner_id = nullif(current_setting('app.user_id', true), '')::uuid)"
+        },
+        "query_log_insert": {
+          "name": "query_log_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": ["public"],
+          "withCheck": "\"query_log\".\"user_id\" = nullif(current_setting('app.user_id', true), '')::uuid and exists (select 1 from cairns c where c.id = \"query_log\".\"cairn_id\")"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.quiz_attempts": {
+      "name": "quiz_attempts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cairn_id": {
+          "name": "cairn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "choice": {
+          "name": "choice",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verdict": {
+          "name": "verdict",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answered_at": {
+          "name": "answered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "quiz_attempts_user_cairn_idx": {
+          "name": "quiz_attempts_user_cairn_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "quiz_attempts_question_id_idx": {
+          "name": "quiz_attempts_question_id_idx",
+          "columns": [
+            {
+              "expression": "question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "quiz_attempts_question_id_quiz_questions_id_fk": {
+          "name": "quiz_attempts_question_id_quiz_questions_id_fk",
+          "tableFrom": "quiz_attempts",
+          "tableTo": "quiz_questions",
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "quiz_attempts_cairn_id_cairns_id_fk": {
+          "name": "quiz_attempts_cairn_id_cairns_id_fk",
+          "tableFrom": "quiz_attempts",
+          "tableTo": "cairns",
+          "columnsFrom": ["cairn_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "quiz_attempts_user_id_users_id_fk": {
+          "name": "quiz_attempts_user_id_users_id_fk",
+          "tableFrom": "quiz_attempts",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "quiz_attempts_own": {
+          "name": "quiz_attempts_own",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "\"quiz_attempts\".\"user_id\" = nullif(current_setting('app.user_id', true), '')::uuid and exists (select 1 from cairn_access(\"quiz_attempts\".\"cairn_id\") a where a.visibility = 'cited')",
+          "withCheck": "\"quiz_attempts\".\"user_id\" = nullif(current_setting('app.user_id', true), '')::uuid and exists (select 1 from cairn_access(\"quiz_attempts\".\"cairn_id\") a where a.visibility = 'cited')"
+        }
+      },
+      "checkConstraints": {
+        "quiz_attempts_verdict_check": {
+          "name": "quiz_attempts_verdict_check",
+          "value": "\"quiz_attempts\".\"verdict\" is null or \"quiz_attempts\".\"verdict\" in ('correct', 'wrong')"
+        },
+        "quiz_attempts_answered_check": {
+          "name": "quiz_attempts_answered_check",
+          "value": "(\"quiz_attempts\".\"answered_at\" is null) = (\"quiz_attempts\".\"verdict\" is null) and (\"quiz_attempts\".\"verdict\" is null) = (\"quiz_attempts\".\"choice\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.quiz_questions": {
+      "name": "quiz_questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cairn_id": {
+          "name": "cairn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chunk_id": {
+          "name": "chunk_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question": {
+          "name": "question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "choices": {
+          "name": "choices",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correct_choice": {
+          "name": "correct_choice",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "answer": {
+          "name": "answer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "explanation": {
+          "name": "explanation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "quiz_questions_cairn_idx": {
+          "name": "quiz_questions_cairn_idx",
+          "columns": [
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "quiz_questions_chunk_id_idx": {
+          "name": "quiz_questions_chunk_id_idx",
+          "columns": [
+            {
+              "expression": "chunk_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "quiz_questions_cairn_id_cairns_id_fk": {
+          "name": "quiz_questions_cairn_id_cairns_id_fk",
+          "tableFrom": "quiz_questions",
+          "tableTo": "cairns",
+          "columnsFrom": ["cairn_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "quiz_questions_chunk_id_chunks_id_fk": {
+          "name": "quiz_questions_chunk_id_chunks_id_fk",
+          "tableFrom": "quiz_questions",
+          "tableTo": "chunks",
+          "columnsFrom": ["chunk_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "quiz_questions_created_by_users_id_fk": {
+          "name": "quiz_questions_created_by_users_id_fk",
+          "tableFrom": "quiz_questions",
+          "tableTo": "users",
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "quiz_questions_read": {
+          "name": "quiz_questions_read",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["public"],
+          "using": "exists (select 1 from cairn_access(\"quiz_questions\".\"cairn_id\") a where a.visibility = 'cited')"
+        },
+        "quiz_questions_insert": {
+          "name": "quiz_questions_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": ["public"],
+          "withCheck": "\"quiz_questions\".\"created_by\" = nullif(current_setting('app.user_id', true), '')::uuid and exists (select 1 from cairn_access(\"quiz_questions\".\"cairn_id\") a where a.visibility = 'cited')"
+        }
+      },
+      "checkConstraints": {
+        "quiz_questions_choice_check": {
+          "name": "quiz_questions_choice_check",
+          "value": "\"quiz_questions\".\"correct_choice\" >= 0 and \"quiz_questions\".\"correct_choice\" < jsonb_array_length(\"quiz_questions\".\"choices\")"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.share_redemptions": {
+      "name": "share_redemptions",
+      "schema": "",
+      "columns": {
+        "share_id": {
+          "name": "share_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "share_redemptions_user_id_idx": {
+          "name": "share_redemptions_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "share_redemptions_share_id_shares_id_fk": {
+          "name": "share_redemptions_share_id_shares_id_fk",
+          "tableFrom": "share_redemptions",
+          "tableTo": "shares",
+          "columnsFrom": ["share_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "share_redemptions_user_id_users_id_fk": {
+          "name": "share_redemptions_user_id_users_id_fk",
+          "tableFrom": "share_redemptions",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "share_redemptions_share_id_user_id_pk": {
+          "name": "share_redemptions_share_id_user_id_pk",
+          "columns": ["share_id", "user_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "share_redemptions_read": {
+          "name": "share_redemptions_read",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["public"],
+          "using": "\"share_redemptions\".\"user_id\" = nullif(current_setting('app.user_id', true), '')::uuid or exists (select 1 from shares s where s.id = \"share_redemptions\".\"share_id\")"
+        },
+        "share_redemptions_delete": {
+          "name": "share_redemptions_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": ["public"],
+          "using": "\"share_redemptions\".\"user_id\" = nullif(current_setting('app.user_id', true), '')::uuid or exists (select 1 from shares s where s.id = \"share_redemptions\".\"share_id\")"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.shares": {
+      "name": "shares",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cairn_id": {
+          "name": "cairn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grantee_email": {
+          "name": "grantee_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "link_token_hash": {
+          "name": "link_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "visibility": {
+          "name": "visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "shares_cairn_id_idx": {
+          "name": "shares_cairn_id_idx",
+          "columns": [
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "shares_cairn_email_key": {
+          "name": "shares_cairn_email_key",
+          "columns": [
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "grantee_email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"shares\".\"grantee_email\" is not null and \"shares\".\"revoked_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "shares_cairn_id_cairns_id_fk": {
+          "name": "shares_cairn_id_cairns_id_fk",
+          "tableFrom": "shares",
+          "tableTo": "cairns",
+          "columnsFrom": ["cairn_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "shares_created_by_users_id_fk": {
+          "name": "shares_created_by_users_id_fk",
+          "tableFrom": "shares",
+          "tableTo": "users",
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "shares_link_token_hash_unique": {
+          "name": "shares_link_token_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": ["link_token_hash"]
+        }
+      },
+      "policies": {
+        "shares_owner": {
+          "name": "shares_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "exists (select 1 from cairns c where c.id = \"shares\".\"cairn_id\" and c.owner_id = nullif(current_setting('app.user_id', true), '')::uuid)",
+          "withCheck": "exists (select 1 from cairns c where c.id = \"shares\".\"cairn_id\" and c.owner_id = nullif(current_setting('app.user_id', true), '')::uuid)"
+        }
+      },
+      "checkConstraints": {
+        "shares_grantee_check": {
+          "name": "shares_grantee_check",
+          "value": "(\"shares\".\"grantee_email\" is null) <> (\"shares\".\"link_token_hash\" is null)"
+        },
+        "shares_email_check": {
+          "name": "shares_email_check",
+          "value": "\"shares\".\"grantee_email\" = lower(\"shares\".\"grantee_email\")"
+        },
+        "shares_role_check": {
+          "name": "shares_role_check",
+          "value": "\"shares\".\"role\" in ('viewer', 'editor')"
+        },
+        "shares_visibility_check": {
+          "name": "shares_visibility_check",
+          "value": "\"shares\".\"visibility\" in ('cited', 'sealed')"
+        },
+        "shares_editor_cited_check": {
+          "name": "shares_editor_cited_check",
+          "value": "\"shares\".\"role\" <> 'editor' or \"shares\".\"visibility\" = 'cited'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sources": {
+      "name": "sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cairn_id": {
+          "name": "cairn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mime": {
+          "name": "mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sources_cairn_id_idx": {
+          "name": "sources_cairn_id_idx",
+          "columns": [
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sources_cairn_url_key": {
+          "name": "sources_cairn_url_key",
+          "columns": [
+            {
+              "expression": "cairn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "url",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sources_cairn_id_cairns_id_fk": {
+          "name": "sources_cairn_id_cairns_id_fk",
+          "tableFrom": "sources",
+          "tableTo": "cairns",
+          "columnsFrom": ["cairn_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "sources_created_by_users_id_fk": {
+          "name": "sources_created_by_users_id_fk",
+          "tableFrom": "sources",
+          "tableTo": "users",
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sources_storage_key_unique": {
+          "name": "sources_storage_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["storage_key"]
+        },
+        "sources_id_cairn_id_key": {
+          "name": "sources_id_cairn_id_key",
+          "nullsNotDistinct": false,
+          "columns": ["id", "cairn_id"]
+        }
+      },
+      "policies": {
+        "sources_read": {
+          "name": "sources_read",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["public"],
+          "using": "exists (select 1 from cairns c where c.id = \"sources\".\"cairn_id\")"
+        },
+        "sources_insert": {
+          "name": "sources_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": ["public"],
+          "withCheck": "exists (select 1 from cairn_access(\"sources\".\"cairn_id\") a where a.role in ('owner', 'editor'))"
+        },
+        "sources_update": {
+          "name": "sources_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": ["public"],
+          "using": "exists (select 1 from cairn_access(\"sources\".\"cairn_id\") a where a.role in ('owner', 'editor'))",
+          "withCheck": "exists (select 1 from cairn_access(\"sources\".\"cairn_id\") a where a.role in ('owner', 'editor'))"
+        },
+        "sources_delete": {
+          "name": "sources_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": ["public"],
+          "using": "exists (select 1 from cairns c where c.id = \"sources\".\"cairn_id\" and c.owner_id = nullif(current_setting('app.user_id', true), '')::uuid)"
+        }
+      },
+      "checkConstraints": {
+        "sources_kind_check": {
+          "name": "sources_kind_check",
+          "value": "\"sources\".\"kind\" in ('text', 'markdown', 'pdf', 'csv', 'json', 'image', 'web')"
+        },
+        "sources_status_check": {
+          "name": "sources_status_check",
+          "value": "\"sources\".\"status\" in ('pending', 'processing', 'ready', 'failed', 'rejected')"
+        },
+        "sources_size_check": {
+          "name": "sources_size_check",
+          "value": "\"sources\".\"size\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "google_sub": {
+          "name": "google_sub",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avatar_url": {
+          "name": "avatar_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_google_sub_unique": {
+          "name": "users_google_sub_unique",
+          "nullsNotDistinct": false,
+          "columns": ["google_sub"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

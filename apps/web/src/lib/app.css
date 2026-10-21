@@ -79,7 +79,7 @@ body {
   padding: 0 0.75rem;
   border-color: transparent;
   border-radius: 12px;
-  text-align: left;
+  text-align: start;
 }
 
 .account-button {
@@ -165,7 +165,7 @@ svg.icon {
   padding: 0 0.625rem;
   border: none;
   border-radius: 10px;
-  text-align: left;
+  text-align: start;
 }
 
 .menu [role='menuitem']:hover {
@@ -271,7 +271,7 @@ svg.icon {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
   font-weight: 600;
-  text-align: left;
+  text-align: start;
 }
 
 .new-cairn:hover {
@@ -498,12 +498,12 @@ a {
   min-width: 0;
 }
 
-/* Second row: the Ask / Test me switch on the left, the buttons pushed right at its height. */
+/* Second row: the Ask / Test me switch at the start, the buttons pushed to the end at its height. */
 .cairn-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .cairn-header h1 {
@@ -865,16 +865,16 @@ button.cite.active {
 }
 
 .passage header .link {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
-/* Open page (web passages) sits on the right, next to Close. */
+/* Open page (web passages) sits at the end, next to Close. */
 .passage header a {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .passage header a + .link {
-  margin-left: 0;
+  margin-inline-start: 0;
 }
 
 .passage .preview {
@@ -907,7 +907,7 @@ button.cite.active {
 
 .cited .link {
   color: inherit;
-  text-align: left;
+  text-align: start;
 }
 
 .mode-switch {
@@ -941,11 +941,11 @@ button.cite.active {
   color: var(--accent);
 }
 
-/* Skip and End quiz: pushed to the right end of the row. */
+/* Skip and End quiz: pushed to the end of the row. */
 .quiz .end-group {
   display: flex;
   gap: 1rem;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .quiz .actions {
@@ -994,7 +994,7 @@ button.cite.active {
   border: none;
   border-radius: 14px;
   background: var(--surface);
-  text-align: left;
+  text-align: start;
   line-height: 1.4;
 }
 
@@ -1086,7 +1086,7 @@ button.cite.active {
 }
 
 .streak {
-  margin-left: 0.5rem;
+  margin-inline-start: 0.5rem;
   font-size: 0.85rem;
   color: var(--muted);
 }
@@ -1118,7 +1118,7 @@ button.cite.active {
 
 .badge {
   display: inline-block;
-  margin-left: 0.5rem;
+  margin-inline-start: 0.5rem;
   padding: 0.15rem 0.6rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--fg) 7%, transparent);
@@ -1208,7 +1208,7 @@ h1 + .badge {
 }
 
 .shares .row > :last-child {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .live.busy {
