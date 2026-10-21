@@ -13,6 +13,7 @@ const chunk = (content: string, over: Partial<RetrievedChunk> = {}): RetrievedCh
   sourceId: 's',
   filename: 'notes.md',
   kind: 'markdown',
+  url: null,
   ordinal: 0,
   content,
   location: {},

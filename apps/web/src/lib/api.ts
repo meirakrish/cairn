@@ -2,6 +2,7 @@ import {
   AnswerEvent,
   CairnResponse,
   CreateShareResponse,
+  DuplicateUrlResponse,
   ListCairnsResponse,
   ListSharesResponse,
   MeResponse,
@@ -110,6 +111,42 @@ export async function redeemShareLink(token: string): Promise<string> {
 
 export async function deleteSource(cairnId: string, sourceId: string): Promise<void> {
   await request(fetch, 'DELETE', `/api/cairns/${cairnId}/sources/${sourceId}`);
+}
+
+/** Thrown by addUrl when the cairn already has the page: `source` is that page, to refresh instead. */
+export class DuplicateUrlError extends ApiError {
+  constructor(
+    message: string,
+    public source: Source,
+  ) {
+    super(409, message);
+  }
+}
+
+/** Adds a web page; the worker fetches it. */
+export async function addUrl(cairnId: string, url: string): Promise<Source> {
+  const res = await fetch(`/api/cairns/${cairnId}/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  const body: unknown = await res.json().catch(() => ({}));
+  if (res.status === 202) return SourceResponse.parse(body).source;
+  const duplicate = DuplicateUrlResponse.safeParse(body);
+  if (res.status === 409 && duplicate.success) {
+    throw new DuplicateUrlError(duplicate.data.error, duplicate.data.source);
+  }
+  throw new ApiError(
+    res.status,
+    (body as { error?: string }).error ?? `adding failed (${res.status})`,
+  );
+}
+
+/** Fetches a web page again. */
+export async function refreshSource(cairnId: string, sourceId: string): Promise<Source> {
+  return SourceResponse.parse(
+    await request(fetch, 'POST', `/api/cairns/${cairnId}/sources/${sourceId}/refresh`),
+  ).source;
 }
 
 /**

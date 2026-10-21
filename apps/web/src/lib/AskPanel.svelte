@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { CitedPassage } from '@cairn/shared';
-  import { describeLocation, splitCitations } from './answer';
+  import { describeLocation, pageLink, splitCitations } from './answer';
   import { askQuestion } from './api';
+  import ExternalLink from './ExternalLink.svelte';
 
   // Sealed: text-only answers, and no way to know which files are ready, so asking is always on.
   // onattach: shown as a paperclip in the question box, for callers who can add files.
@@ -174,6 +175,11 @@
             <strong>[{open}] {openPassage.filename}</strong>
             {#if describeLocation(openPassage.location)}
               <span class="muted">· {describeLocation(openPassage.location)}</span>
+            {/if}
+            {#if openPassage.url}
+              {@const link = pageLink(openPassage.url, openPassage.text)}
+              {#if link}<ExternalLink href={link} title={openPassage.url}>Open page</ExternalLink
+                >{/if}
             {/if}
             <button type="button" class="link" onclick={() => (open = null)}>Close</button>
           </header>

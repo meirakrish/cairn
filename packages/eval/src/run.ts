@@ -108,6 +108,13 @@ const CORPUS: Array<{
     mime: 'application/json',
     data: () => readFileSync(here('corpus/shop.json')),
   },
+  {
+    // Ingested from the file, not fetched: the eval checks reading the page, not the network.
+    filename: 'ridgeback-hut.html',
+    kind: 'web',
+    mime: 'text/html; charset=utf-8',
+    data: () => readFileSync(here('corpus/ridgeback-hut.html')),
+  },
   { filename: 'trailhead.png', kind: 'image', mime: 'image/png', data: trailheadPng },
   {
     filename: 'minutes-scan.pdf',

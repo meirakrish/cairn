@@ -5,33 +5,56 @@
       "id": "con-rep-age",
       "style": "direct",
       "question": "What is the minimum age to serve as a Representative?",
-      "expect": [{ "source": "constitution.pdf", "contains": "Age of twenty five Years" }]
+      "expect": [
+        {
+          "source": "constitution.pdf",
+          "contains": "Age of twenty five Years"
+        }
+      ]
     },
     {
       "id": "con-senators",
       "style": "direct",
       "question": "How many senators does each state have?",
-      "expect": [{ "source": "constitution.pdf", "contains": "two Senators from each State" }]
+      "expect": [
+        {
+          "source": "constitution.pdf",
+          "contains": "two Senators from each State"
+        }
+      ]
     },
     {
       "id": "con-war",
       "style": "direct",
       "question": "Who has the power to declare war?",
-      "expect": [{ "source": "constitution.pdf", "contains": "To declare War" }]
+      "expect": [
+        {
+          "source": "constitution.pdf",
+          "contains": "To declare War"
+        }
+      ]
     },
     {
       "id": "con-president-age",
       "style": "paraphrase",
       "question": "How old do you have to be to become head of state?",
       "expect": [
-        { "source": "constitution.pdf", "contains": "attained to the Age of thirty five Years" }
+        {
+          "source": "constitution.pdf",
+          "contains": "attained to the Age of thirty five Years"
+        }
       ]
     },
     {
       "id": "con-senate-chair",
       "style": "paraphrase",
       "question": "Who chairs the upper chamber of Congress?",
-      "expect": [{ "source": "constitution.pdf", "contains": "shall be President of the Senate" }]
+      "expect": [
+        {
+          "source": "constitution.pdf",
+          "contains": "shall be President of the Senate"
+        }
+      ]
     },
     {
       "id": "con-revenue",
@@ -60,10 +83,12 @@
       "style": "paraphrase",
       "question": "When may the government hold people without bringing them before a judge?",
       "expect": [
-        { "source": "constitution.pdf", "contains": "Writ of Habeas Corpus shall not be suspended" }
+        {
+          "source": "constitution.pdf",
+          "contains": "Writ of Habeas Corpus shall not be suspended"
+        }
       ]
     },
-
     {
       "id": "eos-possessive",
       "style": "direct",
@@ -79,7 +104,12 @@
       "id": "eos-serial-comma",
       "style": "paraphrase",
       "question": "Should there be a comma before the 'and' in a list like red, white and blue?",
-      "expect": [{ "source": "elements-of-style.txt", "contains": "red, white, and blue" }]
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "red, white, and blue"
+        }
+      ]
     },
     {
       "id": "eos-active",
@@ -96,7 +126,12 @@
       "id": "eos-needless",
       "style": "paraphrase",
       "question": "Why should I cut unnecessary words from my sentences?",
-      "expect": [{ "source": "elements-of-style.txt", "contains": "Vigorous writing is concise" }]
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "Vigorous writing is concise"
+        }
+      ]
     },
     {
       "id": "eos-topic-sentence",
@@ -113,7 +148,12 @@
       "id": "eos-positive",
       "style": "paraphrase",
       "question": "How can I avoid sounding timid and noncommittal in my writing?",
-      "expect": [{ "source": "elements-of-style.txt", "contains": "Make definite assertions" }]
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "Make definite assertions"
+        }
+      ]
     },
     {
       "id": "eos-comma-splice",
@@ -130,7 +170,12 @@
       "id": "eos-fact-that",
       "style": "direct",
       "question": "What is wrong with the expression 'the fact that'?",
-      "expect": [{ "source": "elements-of-style.txt", "contains": "should be revised out of" }]
+      "expect": [
+        {
+          "source": "elements-of-style.txt",
+          "contains": "should be revised out of"
+        }
+      ]
     },
     {
       "id": "eos-related-words",
@@ -143,43 +188,71 @@
         }
       ]
     },
-
     {
       "id": "des-storage",
       "style": "direct",
       "question": "Which object storage does Cairn use in development?",
-      "expect": [{ "source": "design.md", "contains": "Garage for dev" }]
+      "expect": [
+        {
+          "source": "design.md",
+          "contains": "Garage for dev"
+        }
+      ]
     },
     {
       "id": "des-sealed",
       "style": "paraphrase",
       "question": "Can a shared knowledge base hide where its answers came from?",
-      "expect": [{ "source": "design.md", "contains": "answers only, with no sources shown" }]
+      "expect": [
+        {
+          "source": "design.md",
+          "contains": "answers only, with no sources shown"
+        }
+      ]
     },
     {
       "id": "des-session",
       "style": "paraphrase",
       "question": "Where is the login state kept after someone signs in with Google?",
-      "expect": [{ "source": "design.md", "contains": "httpOnly cookie backed by Redis" }]
+      "expect": [
+        {
+          "source": "design.md",
+          "contains": "httpOnly cookie backed by Redis"
+        }
+      ]
     },
     {
       "id": "des-chunk-size",
       "style": "direct",
       "question": "How large are the chunks that uploaded documents are split into?",
-      "expect": [{ "source": "design.md", "contains": "600 tokens with overlap" }]
+      "expect": [
+        {
+          "source": "design.md",
+          "contains": "600 tokens with overlap"
+        }
+      ]
     },
     {
       "id": "des-eval",
       "style": "exact",
       "question": "recall@k",
-      "expect": [{ "source": "design.md", "contains": "scored with recall@k" }]
+      "expect": [
+        {
+          "source": "design.md",
+          "contains": "scored with recall@k"
+        }
+      ]
     },
-
     {
       "id": "kit-truncate",
       "style": "direct",
       "question": "What happens when a prompt is longer than Ollama's context window?",
-      "expect": [{ "source": "llm-kit.md", "contains": "oversized prompt fails with a clear" }]
+      "expect": [
+        {
+          "source": "llm-kit.md",
+          "contains": "oversized prompt fails with a clear"
+        }
+      ]
     },
     {
       "id": "kit-json-retry",
@@ -196,80 +269,160 @@
       "id": "kit-publish",
       "style": "paraphrase",
       "question": "How are new versions of the package released without storing a registry token?",
-      "expect": [{ "source": "llm-kit.md", "contains": "trusted publishing" }]
+      "expect": [
+        {
+          "source": "llm-kit.md",
+          "contains": "trusted publishing"
+        }
+      ]
     },
     {
       "id": "kit-providers",
       "style": "direct",
       "question": "Which LLM providers can be configured?",
       "expect": [
-        { "source": "llm-kit.md", "contains": "One config for Ollama, Anthropic and OpenAI" }
+        {
+          "source": "llm-kit.md",
+          "contains": "One config for Ollama, Anthropic and OpenAI"
+        }
       ]
     },
     {
       "id": "kit-idle",
       "style": "exact",
       "question": "idleTimeoutMs",
-      "expect": [{ "source": "llm-kit.md", "contains": "idleTimeoutMs" }]
+      "expect": [
+        {
+          "source": "llm-kit.md",
+          "contains": "idleTimeoutMs"
+        }
+      ]
     },
-
     {
       "id": "both-embed-provider",
       "style": "paraphrase",
       "question": "Why can't the Claude provider be used to compute vectors?",
       "any": true,
       "expect": [
-        { "source": "design.md", "contains": "Anthropic has no embedding API" },
-        { "source": "llm-kit.md", "contains": "Anthropic has no embedding API" }
+        {
+          "source": "design.md",
+          "contains": "Anthropic has no embedding API"
+        },
+        {
+          "source": "llm-kit.md",
+          "contains": "Anthropic has no embedding API"
+        }
       ]
     },
     {
       "id": "csv-elmo",
       "style": "direct",
       "question": "How many cairns are on Saint Elmo's Climb?",
-      "expect": [{ "source": "trails.csv", "contains": "Saint Elmo's Climb" }]
+      "expect": [
+        {
+          "source": "trails.csv",
+          "contains": "Saint Elmo's Climb"
+        }
+      ]
     },
     {
       "id": "csv-heron",
       "style": "paraphrase",
       "question": "How long is the walk called Heron Bay 3, and is it difficult?",
-      "expect": [{ "source": "trails.csv", "contains": "name: Heron Bay 3" }]
+      "expect": [
+        {
+          "source": "trails.csv",
+          "contains": "name: Heron Bay 3"
+        }
+      ]
     },
     {
       "id": "json-lost",
       "style": "direct",
       "question": "Which order was lost in transit?",
-      "expect": [{ "source": "shop.json", "contains": "status: lost in transit" }]
+      "expect": [
+        {
+          "source": "shop.json",
+          "contains": "status: lost in transit"
+        }
+      ]
     },
     {
       "id": "json-returns",
       "style": "paraphrase",
       "question": "How long do customers have to send something back?",
-      "expect": [{ "source": "shop.json", "contains": "returns_days: 30" }]
+      "expect": [
+        {
+          "source": "shop.json",
+          "contains": "returns_days: 30"
+        }
+      ]
     },
     {
       "id": "img-gate",
       "style": "exact",
       "question": "Raven Ridge gate code",
-      "expect": [{ "source": "trailhead.png", "contains": "7319" }]
+      "expect": [
+        {
+          "source": "trailhead.png",
+          "contains": "7319"
+        }
+      ]
     },
     {
       "id": "img-bus",
       "style": "paraphrase",
       "question": "When does the final bus leave the trailhead?",
-      "expect": [{ "source": "trailhead.png", "contains": "18:45" }]
+      "expect": [
+        {
+          "source": "trailhead.png",
+          "contains": "18:45"
+        }
+      ]
     },
     {
       "id": "scan-signage",
       "style": "paraphrase",
       "question": "How much money was set aside for new signs?",
-      "expect": [{ "source": "minutes-scan.pdf", "contains": "600 for new signage" }]
+      "expect": [
+        {
+          "source": "minutes-scan.pdf",
+          "contains": "600 for new signage"
+        }
+      ]
     },
     {
       "id": "scan-roster",
       "style": "direct",
       "question": "Who will repaint the waymarks?",
-      "expect": [{ "source": "minutes-scan.pdf", "contains": "repaint waymarks" }]
+      "expect": [
+        {
+          "source": "minutes-scan.pdf",
+          "contains": "repaint waymarks"
+        }
+      ]
+    },
+    {
+      "id": "web-winter",
+      "style": "paraphrase",
+      "question": "Which route should I take to the hut when the avalanche season closes the usual path?",
+      "expect": [
+        {
+          "source": "ridgeback-hut.html",
+          "contains": "Use the longer forestry road instead"
+        }
+      ]
+    },
+    {
+      "id": "web-gas",
+      "style": "direct",
+      "question": "Where are the spare gas canisters kept at Ridgeback Hut?",
+      "expect": [
+        {
+          "source": "ridgeback-hut.html",
+          "contains": "Locked box under the left platform"
+        }
+      ]
     }
   ]
 }

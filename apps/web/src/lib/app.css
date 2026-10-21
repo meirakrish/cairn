@@ -838,6 +838,15 @@ button.cite.active {
   margin-left: auto;
 }
 
+/* Open page (web passages) sits on the right, next to Close. */
+.passage header a {
+  margin-left: auto;
+}
+
+.passage header a + .link {
+  margin-left: 0;
+}
+
 .passage .preview {
   display: block;
   max-width: 100%;

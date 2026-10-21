@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeLocation, splitCitations, sseData } from './answer';
+import { describeLocation, hostOf, pageLink, splitCitations, sseData } from './answer';
 
 describe('splitCitations', () => {
   it('turns [n] and [n, m] into citations and keeps the text around them', () => {
@@ -66,5 +66,34 @@ describe('sseData', () => {
     const out: string[] = [];
     for await (const data of sseData(body)) out.push(data);
     expect(out).toEqual(['שלום']);
+  });
+});
+
+describe('pageLink', () => {
+  it('links to the first words of the passage text, past headings, tables and code', () => {
+    const passage =
+      '## Hours\n\n```\n# not this\n```\nTime | Day\n- The hut opens at 9, rain-or-shine & free.';
+    expect(pageLink('https://example.com/hut', passage)).toBe(
+      'https://example.com/hut#:~:text=The%20hut%20opens%20at%209%2C%20rain%2Dor%2Dshine%20%26%20free.',
+    );
+  });
+
+  it('keeps only the first 8 words, drops an old fragment, and falls back to the page', () => {
+    expect(pageLink('https://a.com/x#top', 'one two three four five six seven eight nine')).toBe(
+      'https://a.com/x#:~:text=one%20two%20three%20four%20five%20six%20seven%20eight',
+    );
+    expect(pageLink('https://a.com/x', '## Only a heading')).toBe('https://a.com/x');
+  });
+
+  it('gives no link for other schemes', () => {
+    expect(pageLink('javascript:alert(1)', 'text')).toBeUndefined();
+    expect(pageLink('data:text/html,hi', 'text')).toBeUndefined();
+  });
+});
+
+describe('hostOf', () => {
+  it('gives the host, or the input when it is not a URL', () => {
+    expect(hostOf('https://en.wikipedia.org/wiki/Cairn')).toBe('en.wikipedia.org');
+    expect(hostOf('nonsense')).toBe('nonsense');
   });
 });

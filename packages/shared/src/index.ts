@@ -161,6 +161,8 @@ export const CitedPassage = z.object({
   sourceId: z.uuid(),
   filename: z.string(),
   kind: SourceKind,
+  /** The page a web source was fetched from; null for uploads. */
+  url: z.string().nullable(),
   location: ChunkLocation,
   text: z.string(),
 });

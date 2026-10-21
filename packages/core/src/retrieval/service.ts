@@ -31,6 +31,8 @@ export interface RetrievedChunk {
   sourceId: string;
   filename: string;
   kind: SourceKind;
+  /** The page a web source was fetched from; null for uploads. */
+  url: string | null;
   ordinal: number;
   content: string;
   location: ChunkLocation;
@@ -121,6 +123,7 @@ export class RetrievalService {
           sourceId: chunks.sourceId,
           filename: sources.filename,
           kind: sources.kind,
+          url: sources.url,
           ordinal: chunks.ordinal,
           content: chunks.content,
           location: chunks.location,

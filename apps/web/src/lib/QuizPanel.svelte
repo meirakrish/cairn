@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { QuizQuestion, QuizResult } from '@cairn/shared';
-  import { describeLocation } from './answer';
+  import { describeLocation, pageLink } from './answer';
   import { answerQuiz, newQuizQuestion } from './api';
+  import ExternalLink from './ExternalLink.svelte';
   import { describeScore, optionLetter, tally, VERDICT_LABEL, type Outcome } from './quiz';
 
   let { cairnId, readySources }: { cairnId: string; readySources: number } = $props();
@@ -170,6 +171,12 @@
                 <strong>{result.passage.filename}</strong>
                 {#if describeLocation(result.passage.location)}
                   <span class="muted">· {describeLocation(result.passage.location)}</span>
+                {/if}
+                {#if result.passage.url}
+                  {@const link = pageLink(result.passage.url, result.passage.text)}
+                  {#if link}<ExternalLink href={link} title={result.passage.url}
+                      >Open page</ExternalLink
+                    >{/if}
                 {/if}
                 <button type="button" class="link" onclick={() => (showPassage = false)}
                   >Close</button
