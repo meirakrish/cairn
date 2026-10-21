@@ -29,6 +29,15 @@ describe('describeLocation', () => {
     expect(describeLocation({ headings: ['A', 'B'] })).toBe('A › B');
     expect(describeLocation({ offset: 5 })).toBe('');
   });
+
+  it('names row, line and path locations', () => {
+    expect(describeLocation({ rows: [2, 40] })).toBe('rows 2–40');
+    expect(describeLocation({ rows: [7, 7] })).toBe('row 7');
+    expect(describeLocation({ lines: [3, 3] })).toBe('line 3');
+    expect(describeLocation({ path: '$.orders[3] … $.orders[9]' })).toBe(
+      '$.orders[3] … $.orders[9]',
+    );
+  });
 });
 
 describe('sseData', () => {

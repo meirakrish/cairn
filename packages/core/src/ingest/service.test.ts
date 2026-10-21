@@ -37,12 +37,14 @@ function setup(embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS })) {
 async function uploaded(cairns: CairnService, kind: SourceKind, data: Uint8Array) {
   const user = await createUser(admin.db);
   const cairn = await cairns.create(user.id, { name: 'C' });
-  const mime = {
+  const mimes: Record<SourceKind, string> = {
     text: 'text/plain',
     markdown: 'text/markdown',
     pdf: 'application/pdf',
     csv: 'text/csv',
-  }[kind];
+    json: 'application/json',
+  };
+  const mime = mimes[kind];
   const source = await sources.create(user.id, cairn.id, {
     kind,
     filename: 'f',

@@ -71,10 +71,11 @@ export function cleanFilename(name: string): string {
 
 const MARKDOWN_EXTENSIONS = /\.(md|markdown)$/i;
 const CSV_EXTENSIONS = /\.(csv|tsv)$/i;
+const JSON_EXTENSIONS = /\.(json|jsonl|ndjson)$/i;
 
 /**
  * Decides the kind from the bytes, not the client's Content-Type: a PDF signature, or valid UTF-8 text
- * (Markdown or CSV by extension). Anything else, including binary formats renamed to .txt, is
+ * (Markdown, CSV or JSON by extension). Anything else, including binary formats renamed to .txt, is
  * unsupported.
  */
 export function detectKind(
@@ -91,5 +92,6 @@ export function detectKind(
   }
   if (MARKDOWN_EXTENSIONS.test(filename)) return { kind: 'markdown', mime: 'text/markdown' };
   if (CSV_EXTENSIONS.test(filename)) return { kind: 'csv', mime: 'text/csv' };
+  if (JSON_EXTENSIONS.test(filename)) return { kind: 'json', mime: 'application/json' };
   return { kind: 'text', mime: 'text/plain' };
 }

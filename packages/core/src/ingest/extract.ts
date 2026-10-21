@@ -3,8 +3,9 @@ import type { ChunkLocation, SourceKind } from '../db';
 import { DEFAULT_CHUNKING } from './chunk';
 import { csvSegments } from './csv';
 import { PermanentIngestError } from './errors';
+import { jsonSegments } from './json';
 
-/** A run of text with one location: a whole text file, a Markdown section, a PDF page, or CSV rows. */
+/** A run of text with one location: a whole text file, a Markdown section, a PDF page, CSV rows or JSON records. */
 export interface Segment {
   text: string;
   location: ChunkLocation;
@@ -17,7 +18,7 @@ export const EXTRACT_LIMITS = {
   pdfTimeoutMs: 60_000,
 };
 
-/** `maxChars`: the chunk size, so record formats (CSV) can group whole rows into chunks. */
+/** `maxChars`: the chunk size, so record formats (CSV, JSON) can group whole records into chunks. */
 export async function extract(
   kind: SourceKind,
   data: Uint8Array,
@@ -30,7 +31,9 @@ export async function extract(
         ? markdownSections(decodeText(data))
         : kind === 'csv'
           ? csvSegments(decodeText(data), maxChars)
-          : [{ text: decodeText(data), location: { offset: 0 } }];
+          : kind === 'json'
+            ? jsonSegments(decodeText(data), maxChars)
+            : [{ text: decodeText(data), location: { offset: 0 } }];
 
   const total = segments.reduce((n, s) => n + s.text.length, 0);
   if (total > EXTRACT_LIMITS.maxChars) {

@@ -242,8 +242,8 @@ Step 5 as built:
 | ---- | -------------------------------------------------------------------------------------------------------------- | ------ | ------------------------- |
 | 1    | Cap open event streams at 3 per user (Redis lease set, 429 above it); web shows why live updates stopped       | done   | `phase5/step1-stream-cap` |
 | 2    | CSV ingest: delimiter sniffing, rows as `column: value` lines, header repeated per chunk, location = row range | done   | `phase5/step2-csv`        |
-| 3    | JSON / JSONL ingest: records as `path: value` lines, location = JSON path                                      | next   |                           |
-| 4    | Images (PNG, JPEG, WebP): resize, transcribe + describe with `qwen3.5:9b` vision, then chunk and embed         | todo   |                           |
+| 3    | JSON / JSONL ingest: records as `path: value` lines, location = JSON path                                      | done   | `phase5/step3-json`       |
+| 4    | Images (PNG, JPEG, WebP): resize, transcribe + describe with `qwen3.5:9b` vision, then chunk and embed         | next   |                           |
 | 5    | Scanned PDFs: render pages without a text layer and transcribe them with the vision model                      | todo   |                           |
 | 6    | Web (new kinds, locations; no image previews for sealed callers) and eval questions for each new type          | todo   |                           |
 
@@ -269,6 +269,14 @@ Step 2 as built:
 - Tests: parser, sniffing, segments, packing, extract (BOM, CRLF), ingest end to end.
 - Checked live (qwen3.5:9b, 120-row `;`-separated CSV): exact lookups are right and cite the right row range ("how many cairns on Saint Elmo's Climb", "which region is T117"); 4–8 s per answer. "List hard trails in the Coast region" (a filter over two columns) gave 11 trails, 4 of them wrong: the model filters rows unreliably. Expected (aggregates and filters are out of scope); a SQL-over-table feature would fix it.
 
+Step 3 as built:
+
+- Kind `json` (migration `0005_json_kind`); upload `.json`/`.jsonl`/`.ndjson` + valid UTF-8 → `application/json`. One kind for both: extract tries `JSON.parse` on the whole text, else parses line by line (JSON Lines); a bad line → `PermanentIngestError` naming it.
+- core `src/ingest/json.ts`: `jsonRecords` flattens to `key.sub[0]: value` lines; every list of ≥2 objects becomes one record per element (recursively, so `$[0].items[1]` is its own record), the parent keeps its other fields; empty strings dropped, `null` kept; deeper than 32 levels → compact JSON. JSON record text: `$.orders[3]: id: 7; customer.name: Ada`; location `path` (`$.orders[3]`, or `$.orders[3] … $.orders[17]` for a packed range). JSON Lines: one record per line, location `lines: [first, last]`.
+- `packRecords(records, maxChars, locate)` now takes the location builder (CSV rows default).
+- `ChunkLocation.lines` and `.path` (core + shared); `describeLocation` → `line 3` / `lines 5–9` / the path.
+- Checked live: an 80-order nested JSON (6 chunks, 0.5 s) and a 50-line JSONL log (2 chunks): "which order was lost in transit, and who was the customer?", "returns days and support contact" (root fields), "what error did the server log, and when?" all answered correctly with the right path/line range.
+
 ## Current layout
 
 ```
@@ -277,7 +285,7 @@ apps/worker      BullMQ worker on queue `ingest`: config.ts, processor.ts (retry
 apps/api         Express 5; src/config.ts (zod env), src/auth/ (google, session, middleware: originCheck, loadUser, requireUser); src/cairns.ts (cairn + source routes); src/upload.ts (readUpload, detectKind, cleanFilename); src/events.ts (SSE route) + src/event-hub.ts; src/query.ts (answers, SSE) + src/rate-limit.ts; src/shares.ts (share routes, link redeem); src/stream-limit.ts (StreamLimiter); src/errors.ts (HttpError); error handler in app.ts; src/testing.ts (createTestApp, setCookie); *.test.ts next to the code; dev with tsx watch, build with tsdown → dist/index.mjs
 packages/eval    retrieval eval: corpus/, questions.json, src/run.ts (`pnpm eval`)
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
-packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, csv, records, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/shares.ts (ShareService, cairnAccess, hashShareToken); src/answer/ (AnswerService, buildMessages, citedNumbers); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
+packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, csv, json, records, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/shares.ts (ShareService, cairnAccess, hashShareToken); src/answer/ (AnswerService, buildMessages, citedNumbers); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
 scripts/infra-forward.sh  port-forwards with auto-retry
@@ -337,4 +345,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 5 step 3 (JSON).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 5 step 4 (images).** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
