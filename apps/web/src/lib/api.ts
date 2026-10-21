@@ -1,4 +1,5 @@
 import {
+  AnswerEvent,
   CairnResponse,
   ListCairnsResponse,
   MeResponse,
@@ -8,6 +9,7 @@ import {
   type Source,
   type User,
 } from '@cairn/shared';
+import { sseData } from './answer';
 
 type Fetch = typeof globalThis.fetch;
 
@@ -96,4 +98,27 @@ export function uploadSource(
     form.append('file', file);
     xhr.send(form);
   });
+}
+
+/**
+ * Asks a question and calls `onEvent` for each answer event as it streams in. Errors before the stream
+ * (validation, access, rate limit) throw an ApiError; `signal` stops the answer.
+ */
+export async function askQuestion(
+  cairnId: string,
+  question: string,
+  onEvent: (event: AnswerEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/cairns/${cairnId}/query`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ question }),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(res.status, err.error ?? `asking failed (${res.status})`);
+  }
+  for await (const data of sseData(res.body)) onEvent(AnswerEvent.parse(JSON.parse(data)));
 }

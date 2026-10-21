@@ -343,3 +343,98 @@ button.danger {
   color: #fff;
   font-size: 0.85rem;
 }
+
+.ask {
+  margin: 1.5rem 0 2rem;
+}
+
+.ask form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ask textarea {
+  resize: vertical;
+}
+
+.answer {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.answer .asked {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.answer .text {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+button.cite {
+  display: inline-block;
+  min-width: 1.4rem;
+  margin: 0 0.1rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.8em;
+  line-height: 1.4;
+  vertical-align: 0.1em;
+}
+
+button.cite:hover,
+button.cite.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.passage {
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+
+.passage header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.passage header .link {
+  margin-left: auto;
+}
+
+.passage p {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  max-height: 16rem;
+  overflow: auto;
+  font-size: 0.9rem;
+}
+
+.cited {
+  margin-top: 1rem;
+}
+
+.cited ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.cited .link {
+  color: inherit;
+  text-align: left;
+}

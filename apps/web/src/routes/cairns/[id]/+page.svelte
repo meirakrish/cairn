@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { SourceEvent, type Source } from '@cairn/shared';
   import { deleteSource, uploadSource } from '#lib/api.ts';
+  import AskPanel from '#lib/AskPanel.svelte';
   import type { PageProps } from './$types';
 
   let { data }: PageProps = $props();
@@ -136,6 +137,11 @@
 <a class="back" href={resolve('/')}>← Your cairns</a>
 <h1>{data.cairn.name}</h1>
 {#if data.cairn.description}<p class="muted">{data.cairn.description}</p>{/if}
+
+<AskPanel
+  cairnId={data.cairn.id}
+  readySources={sources.filter((s) => s.status === 'ready').length}
+/>
 
 <div
   class="dropzone"
