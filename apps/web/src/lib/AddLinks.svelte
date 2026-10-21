@@ -3,8 +3,12 @@
   import { addUrl, DuplicateUrlError, refreshSource } from './api';
 
   // The form inside the Add links popover. onadded gets each new or refreshed source, so the file
-  // list shows it before its first live update arrives.
-  let { cairnId, onadded }: { cairnId: string; onadded: (source: Source) => void } = $props();
+  // list shows it before its first live update arrives; ondone says every link was added.
+  let {
+    cairnId,
+    onadded,
+    ondone,
+  }: { cairnId: string; onadded: (source: Source) => void; ondone?: () => void } = $props();
 
   interface Problem {
     url: string;
@@ -56,6 +60,8 @@
       .map((p) => p.url)
       .join('\n');
     adding = false;
+    // Everything went in: nothing left to show or fix.
+    if (failed.length === 0) ondone?.();
   }
 
   async function refresh(problem: Problem) {

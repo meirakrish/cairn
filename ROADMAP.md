@@ -476,7 +476,33 @@ Branch `phase10/sources-panel` (from `phase9/cairn-deletion`). Asked for on 2026
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | 1    | Web: the Files button becomes a database-icon "Sources" panel with Add files / Add web pages; the header's paperclip and link buttons are removed | done   |
 
-As built: the panel lists every source (delete, refresh, status as before) and, for owners and editors, has "Add files" (opens the file picker) and "Add web pages" (shows the `AddLinks` form inline). Drag-and-drop and the paperclip in the question box still work. Not checked in a browser.
+As built: the panel lists every source (delete, refresh, status as before) and, for owners and editors, has "Add files" (opens the file picker) and "Add web pages" (shows the `AddLinks` form inline). Drag-and-drop still works (the paperclip in the question box was removed on 2026-10-21). Not checked in a browser.
+
+## Phase 11: cairn header actions
+
+Branch `phase11/cairn-header-actions` (from `phase10/sources-panel`). Asked for on 2026-10-21.
+
+| Step | What                                                                                                                                      | Status |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 1    | Web: a small pencil beside the title; the red trash button sits with the Sources and Share buttons (owner only), opening a confirm dialog | done   |
+
+As built: `CairnDialog` is back to create/edit only; the trash (red, right-hand group, `.icon-button.destructive`) opens `DeleteCairnDialog` (a modal like the edit one: name, warning, Cancel / Delete cairn, inline error; Escape and backdrop are ignored while deleting). Not checked in a browser.
+
+Layout fix (2026-10-21, from a screenshot): the Ask / Test me switch sat at the panel's left edge, outside the 48rem column (an inline-flex element ignores `margin-inline: auto`); it now lines up with the title and the question box. Then moved into the header: title on the first row; the switch on the left and the buttons (`.cairn-actions`, pushed right) on the second row, at the same height. Header spacing 1rem → 1.5rem.
+
+Test me starts at once (2026-10-21): `QuizPanel` fetches the first question when it opens, once a file is ready (the api already serves the bank first and writes only when nothing unseen is left); "Start quiz" shows only after End quiz with nothing answered, and "New quiz" starts straight away.
+
+Sources in the main window (2026-10-21): the database button is a toggle (pressed while open) that swaps the main content to the sources list (add buttons, Refresh, Delete) instead of a popover; Ask / Test me tabs or the button again go back. The Ask panel stays mounted and the quiz mounts on first visit, both hidden meanwhile, so an answer or a quiz in progress isn't lost.
+
+Quiz buttons (2026-10-21): End quiz moved from the top bar to the bottom row, right-aligned next to Skip (also shown with the verdict and on a load error).
+
+Same question again (2026-10-21): a dev cairn (1 file, 3 passages, 15 bank questions, 51 attempts) kept showing three rewordings of one question ("served as / formed the foundation of the core monitoring platform"), because "seen" was an exact-text match and only new drafts were checked with `similarQuestion`. Now `unseen`, `unseenCount` and `seenLongestAgo` (core `quiz/service.ts`) treat a rewording (`sameQuestion`: same normalized text or `similarQuestion`) as the same question, in the bank and against what you were asked; they pick in code over the bank rather than in SQL. Old rewordings stay in the bank but are served as one. A cairn that can make only one distinct question still repeats it.
+
+Festive results (2026-10-21): a right answer shows "Right 🎉" with a confetti shower in the verdict box and, from two in a row, "N in a row 🔥"; the end screen is centred with an emoji and a headline by score (`cheer()` in `quiz.ts`: 🏆 Perfect score!, 🎉 Great job! from 80% of at least three answers, with confetti; 👏 Nicely done from 50%; 🌱 Good practice below). `Confetti.svelte` is CSS-only and hidden under `prefers-reduced-motion`. Wrong answers stay plain. Not checked in a browser.
+
+Add web pages form (2026-10-21): it closes by itself once every link was added (`AddLinks` `ondone`; links that fail keep it open with their messages), and it is closed whenever the Sources page opens.
+
+Ask box per cairn (2026-10-21): `AskPanel` is keyed by the cairn id like `QuizPanel`, so a typed question, an answer on screen or a running answer no longer follow you to another cairn.
 
 ## Current layout
 
@@ -546,4 +572,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: merge `phase9/cairn-deletion` and `phase10/sources-panel`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: merge `phase9/cairn-deletion`, `phase10/sources-panel` and `phase11/cairn-header-actions`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

@@ -1,9 +1,19 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { QuizQuestion, QuizResult } from '@cairn/shared';
   import { describeLocation, pageLink } from './answer';
   import { answerQuiz, newQuizQuestion } from './api';
+  import Confetti from './Confetti.svelte';
   import ExternalLink from './ExternalLink.svelte';
-  import { describeScore, optionLetter, tally, VERDICT_LABEL, type Outcome } from './quiz';
+  import {
+    cheer,
+    describeScore,
+    optionLetter,
+    streak,
+    tally,
+    VERDICT_LABEL,
+    type Outcome,
+  } from './quiz';
 
   let { cairnId, readySources }: { cairnId: string; readySources: number } = $props();
 
@@ -19,18 +29,32 @@
   let error = $state<string | null>(null);
   let showPassage = $state(false);
   let controller: AbortController | undefined;
+  let started = false;
 
   const score = $derived(tally(outcomes));
+  const party = $derived(cheer(score));
+  const inARow = $derived(streak(outcomes));
   const canQuiz = $derived(readySources > 0);
 
   const message = (err: unknown, fallback: string) =>
     err instanceof Error ? err.message : fallback;
 
-  function start(event: SubmitEvent) {
-    event.preventDefault();
+  function begin() {
+    started = true;
     outcomes = [];
     void next();
   }
+
+  function start(event: SubmitEvent) {
+    event.preventDefault();
+    begin();
+  }
+
+  // Opening the quiz shows the first question right away (from the bank, or written by the model);
+  // if no file is ready yet, it starts when the first one is. Only once: after End quiz, wait.
+  $effect(() => {
+    if (canQuiz && !started) untrack(begin);
+  });
 
   async function next() {
     controller?.abort();
@@ -107,10 +131,12 @@
     </form>
   {:else if phase === 'summary'}
     <div class="quiz-summary">
-      <h2>Quiz done</h2>
+      {#if party.party}<Confetti pieces={48} />{/if}
+      <p class="trophy" aria-hidden="true">{party.emoji}</p>
+      <h2>{party.title}</h2>
       <p class="score-big">{describeScore(score)}</p>
       <div class="actions">
-        <button class="primary" type="button" onclick={() => (phase = 'setup')}>New quiz</button>
+        <button class="primary" type="button" onclick={begin}>New quiz</button>
       </div>
     </div>
   {:else}
@@ -119,7 +145,6 @@
         Question {outcomes.length + (phase === 'result' ? 0 : 1)}
         {#if outcomes.length}· {describeScore(score)}{/if}
       </small>
-      <button type="button" class="link" onclick={end}>End quiz</button>
     </div>
 
     {#if phase === 'loading'}
@@ -127,6 +152,9 @@
         <p class="error">{error}</p>
         <div class="actions">
           <button type="button" class="primary" onclick={() => void next()}>Try again</button>
+          <span class="end-group">
+            <button type="button" class="link" onclick={end}>End quiz</button>
+          </span>
         </div>
       {:else}
         <p class="muted" aria-live="polite">Writing a question…</p>
@@ -161,7 +189,13 @@
 
         {#if result}
           <div class="verdict {result.verdict}">
-            <strong>{VERDICT_LABEL[result.verdict]}</strong>
+            {#if result.verdict === 'correct'}<Confetti />{/if}
+            <strong
+              >{VERDICT_LABEL[result.verdict]}{result.verdict === 'correct' ? ' 🎉' : ''}</strong
+            >
+            {#if result.verdict === 'correct' && inARow >= 2}
+              <span class="streak">{inARow} in a row 🔥</span>
+            {/if}
             <p>{result.explanation}</p>
           </div>
 
@@ -203,9 +237,13 @@
                 Show the passage
               </button>
             {/if}
-          {:else if phase === 'asking'}
-            <button type="button" class="link" onclick={skip}>Skip</button>
           {/if}
+          <span class="end-group">
+            {#if phase === 'asking'}
+              <button type="button" class="link" onclick={skip}>Skip</button>
+            {/if}
+            <button type="button" class="link" onclick={end}>End quiz</button>
+          </span>
         </div>
       </article>
     {/if}

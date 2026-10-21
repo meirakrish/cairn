@@ -34,3 +34,31 @@ export const VERDICT_LABEL: Record<QuizVerdict, string> = {
 
 /** A, B, C, D. */
 export const optionLetter = (i: number) => String.fromCharCode(65 + i);
+
+export interface Cheer {
+  emoji: string;
+  title: string;
+  /** Worth confetti. */
+  party: boolean;
+}
+
+/** The end-of-quiz headline: warm at every score, festive from 80% of at least three answers. */
+export function cheer(score: Score): Cheer {
+  if (score.answered === 0) return { emoji: '👋', title: 'Quiz done', party: false };
+  const share = score.correct / score.answered;
+  if (share === 1 && score.answered >= 3)
+    return { emoji: '🏆', title: 'Perfect score!', party: true };
+  if (share >= 0.8 && score.answered >= 3) return { emoji: '🎉', title: 'Great job!', party: true };
+  if (share >= 0.5) return { emoji: '👏', title: 'Nicely done', party: false };
+  return { emoji: '🌱', title: 'Good practice', party: false };
+}
+
+/** Right answers in a row at the end of the quiz; skips don't break a streak. */
+export function streak(outcomes: Outcome[]): number {
+  let n = 0;
+  for (const o of [...outcomes].reverse()) {
+    if (o === 'correct') n++;
+    else if (o === 'wrong') break;
+  }
+  return n;
+}

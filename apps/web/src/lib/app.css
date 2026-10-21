@@ -488,14 +488,22 @@ a {
 .cairn-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  align-items: center;
+  gap: 0.75rem 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .cairn-header .title {
-  flex: 1 1 16rem;
+  flex: 1 0 100%;
   min-width: 0;
+}
+
+/* Second row: the Ask / Test me switch on the left, the buttons pushed right at its height. */
+.cairn-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .cairn-header h1 {
@@ -526,9 +534,19 @@ a {
 }
 
 .icon-button:hover,
-.icon-button[aria-expanded='true'] {
+.icon-button[aria-expanded='true'],
+.icon-button[aria-pressed='true'] {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
+}
+
+.icon-button.destructive {
+  color: var(--error);
+}
+
+.icon-button.destructive:hover {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  color: var(--error);
 }
 
 .popover {
@@ -553,13 +571,13 @@ a {
     0 16px 40px rgb(0 0 0 / 0.12);
 }
 
-.panel .sources-header h2,
+.sources-header h2,
 .panel .share h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
 }
 
-.panel .sources {
+.sources-view .sources {
   margin-bottom: 0.75rem;
 }
 
@@ -727,10 +745,18 @@ button.link:hover {
   font-size: 0.85rem;
 }
 
-.delete-cairn {
-  display: grid;
-  gap: 0.5rem;
-  justify-items: start;
+.cairn-header .title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.icon-button.small {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  color: var(--muted);
 }
 
 button.danger {
@@ -739,6 +765,11 @@ button.danger {
   background: var(--error);
   color: var(--on-error);
   font-size: 0.85rem;
+}
+
+.modal button.danger {
+  padding: 0.5rem 1rem;
+  font-size: inherit;
 }
 
 .ask {
@@ -773,17 +804,9 @@ button.danger {
   resize: none;
 }
 
-.ask-box .attach {
-  background: transparent;
-  color: var(--muted);
-}
-
-.ask-box > button:not(.attach) {
-  border-radius: 12px;
-}
-
-.ask-box > button:not(.attach) {
+.ask-box > button {
   min-height: 2.75rem;
+  border-radius: 12px;
 }
 
 .ask form small {
@@ -888,15 +911,16 @@ button.cite.active {
 
 .mode-switch {
   display: inline-flex;
+  box-sizing: border-box;
+  height: 2.75rem; /* as tall as .icon-button */
   gap: 0.25rem;
-  margin-bottom: 0.75rem;
   padding: 0.25rem;
   border-radius: 14px;
   background: var(--surface);
 }
 
 .mode-switch button {
-  padding: 0.35rem 1rem;
+  padding: 0 1rem;
   border: none;
   border-radius: 10px;
   color: var(--muted);
@@ -914,6 +938,13 @@ button.cite.active {
 
 .quiz button.link:hover {
   color: var(--accent);
+}
+
+/* Skip and End quiz: pushed to the right end of the row. */
+.quiz .end-group {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
 }
 
 .quiz .actions {
@@ -1001,6 +1032,7 @@ button.cite.active {
 }
 
 .verdict {
+  position: relative;
   margin-top: 1rem;
   padding: 0.875rem 1.125rem;
   border-radius: 14px;
@@ -1032,8 +1064,50 @@ button.cite.active {
   margin-top: 1rem;
 }
 
+.quiz-summary {
+  position: relative;
+  padding: 1.5rem 0 0.5rem;
+  text-align: center;
+}
+
+.quiz-summary .actions {
+  justify-content: center;
+}
+
 .quiz-summary h2 {
   margin: 0 0 0.5rem;
+}
+
+.trophy {
+  margin: 0;
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.streak {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .trophy {
+    animation: pop 0.5s ease-out;
+  }
+
+  @keyframes pop {
+    0% {
+      transform: scale(0.4);
+      opacity: 0;
+    }
+    70% {
+      transform: scale(1.15);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
 }
 
 .score-big {
