@@ -558,7 +558,7 @@ Design: the model never writes SQL. It writes a small JSON **query plan** (filte
 | 2    | Ingest: CSV and JSON/JSONL (flat records) also write rows and column types; chunks stay (lookups, keyword search); nested JSON keeps only its chunks                      | done    |
 | 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | done    |
 | 4    | core `TableQueryService`: router prompt (question + cairn's table schemas → plan or "passages"), run, then answer from the result; fall back to passages on a bad plan     | done    |
-| 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | planned |
+| 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | done    |
 | 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | planned |
 
 Step 1 as built: migration 0014. `source_rows` has the same shape and RLS as `chunks` (composite FK to `sources(id, cairn_id)`, readable where the cairn is, writable by owners and editors, deleted with the source), unique on `(source_id, row)`; `row` is the same number the chunk locations use. `sources.columns` is `TableColumn[]` (`{ name, type }`, type `number` | `date` | `text`), null for non-tables. Nothing writes either yet (step 2); `src/db/source-rows-rls.test.ts` covers the policies. Dev DB is migrated.
@@ -581,8 +581,10 @@ Step 3 as built (`core/src/table/`): `TablePlan` (zod, strict: unknown keys are 
 Step 4 as built (`core/src/table/query.ts`, `prompt.ts`): `TableQueryService.attempt(userId, cairnId, question)` lists the cairn's ready table sources (newest 5; none → returns at once, **no model call**), shows the model each with its columns and types, row count and 3 example rows, and asks for a `Route` (`{ approach: 'table' | 'passages', table?, plan? }`) with one `structured` call (name `table_route`, string lengths bounded for Ollama). A plan that `PlanError`s is sent back once with the reason (`PLAN_ATTEMPTS` = 2); after that, or for `passages`, a missing table or a vanished file, it returns undefined. Other errors propagate. A success is a `TableAttempt` { source, plan, description (the plan in words, no model), result, text }.
 
 - `AnswerService` takes an optional 4th argument `tables`. With a result, the answer is written from it alone: it becomes the one passage (`filename` and `kind` of the table, empty location), so it is cited as [1], and retrieval is skipped. Otherwise nothing changes. Sealed callers get the same through `answerSealed`: the result text names no file (so a sealed prompt carries no filename), and the verbatim filter still runs.
-- Not wired yet: `apps/api` still builds `AnswerService` without `tables` (step 5 turns it on, with the citation showing the query and row range). Not yet tried with a real model (step 6).
+- Not yet tried with a real model (step 6).
 - Router prompt text lives in `ROUTER_PROMPT`; the file's text is escaped so a cell can't close `<tables>`.
+
+Step 5 as built: `apps/api` builds `AnswerService` with `TableQueryService(db, TableService(db), llm)`, so it is on for every cairn that has a table (the only api change). `CitedPassage` (shared) got an optional `query: { description, matched }`, set by `answer()` when the passage is a table result. Web: the open passage's header reads "Query over all rows: rows where Region = "West"; sum(Amount) · 3 rows matched", and the Sources list says "table query" instead of a location; the result itself shows as the passage text (`row | col | col` lines). Sealed callers still get text only. No row range is shown: matching rows of a listing are not contiguous, so they are listed by number in the text instead.
 
 Open questions:
 

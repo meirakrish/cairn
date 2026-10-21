@@ -269,6 +269,10 @@ describe('AnswerService with table queries', () => {
     const list = (events[0] as Extract<AnswerEvent, { type: 'passages' }>).passages;
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ n: 1, sourceId: table.id, filename: 'sales.csv', kind: 'csv' });
+    expect(list[0]!.query).toEqual({
+      description: 'rows where Region = "west"; sum(Amount)',
+      matched: 2,
+    });
     expect(list[0]!.text).toContain('rows where Region = "west"; sum(Amount)');
     expect(list[0]!.text).toContain('sum(Amount)\n140.5');
     expect(events.at(-1)).toMatchObject({ type: 'done', cited: [1] });
@@ -288,6 +292,7 @@ describe('AnswerService with table queries', () => {
 
     const list = (events[0] as Extract<AnswerEvent, { type: 'passages' }>).passages;
     expect(list.map((p) => p.filename)).toContain('trail.pdf');
+    expect(list.every((p) => p.query === undefined)).toBe(true);
   });
 
   it('serves sealed callers the same answer as text only, in their own words', async () => {

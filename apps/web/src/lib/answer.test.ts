@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { describeLocation, hostOf, pageLink, splitCitations, sseData } from './answer';
+import {
+  describeLocation,
+  describeQuery,
+  hostOf,
+  pageLink,
+  splitCitations,
+  sseData,
+} from './answer';
 
 describe('splitCitations', () => {
   it('turns [n] and [n, m] into citations and keeps the text around them', () => {
@@ -20,6 +27,17 @@ describe('splitCitations', () => {
       { text: '.' },
     ]);
     expect(splitCitations('', 2)).toEqual([]);
+  });
+});
+
+describe('describeQuery', () => {
+  it('says what was run and how many rows it kept', () => {
+    expect(describeQuery({ description: 'all rows; count', matched: 12 })).toBe(
+      'all rows; count · 12 rows matched',
+    );
+    expect(describeQuery({ description: 'rows where Id = 7', matched: 1 })).toBe(
+      'rows where Id = 7 · 1 row matched',
+    );
   });
 });
 

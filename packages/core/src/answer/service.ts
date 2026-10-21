@@ -46,7 +46,7 @@ export class AnswerService {
     if (access.visibility === 'sealed') {
       throw new ForbiddenError('sources are not shown for this cairn');
     }
-    const chunks = await this.gather(userId, cairnId, question, opts);
+    const { chunks, table } = await this.gather(userId, cairnId, question, opts);
     const passages: CitedPassage[] = chunks.map((c, i) => ({
       n: i + 1,
       sourceId: c.sourceId,
@@ -54,6 +54,7 @@ export class AnswerService {
       kind: c.kind,
       url: c.url,
       location: c.location,
+      ...(table && { query: { description: table.description, matched: table.result.matched } }),
       text: c.content,
     }));
     yield { type: 'passages', passages };
@@ -88,7 +89,7 @@ export class AnswerService {
   ): AsyncGenerator<SealedAnswerEvent> {
     const started = Date.now();
     const access = await this.access(userId, cairnId);
-    const chunks = await this.gather(userId, cairnId, question, opts);
+    const { chunks } = await this.gather(userId, cairnId, question, opts);
 
     if (chunks.length === 0) {
       yield { type: 'delta', text: NOTHING_FOUND };
@@ -114,10 +115,12 @@ export class AnswerService {
     cairnId: string,
     question: string,
     opts: AnswerOptions,
-  ): Promise<RetrievedChunk[]> {
+  ): Promise<{ chunks: RetrievedChunk[]; table?: TableAttempt }> {
     const table = await this.tables?.attempt(userId, cairnId, question, { signal: opts.signal });
-    if (table) return [tableChunk(table)];
-    return this.retrieval.search(userId, cairnId, question, { signal: opts.signal });
+    if (table) return { chunks: [tableChunk(table)], table };
+    return {
+      chunks: await this.retrieval.search(userId, cairnId, question, { signal: opts.signal }),
+    };
   }
 
   private async access(userId: string, cairnId: string): Promise<CairnAccess> {
