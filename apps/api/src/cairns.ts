@@ -112,7 +112,10 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
     const filename = cleanFilename(upload.filename);
     const detected = detectKind(filename, upload.data);
     if (!detected)
-      throw new HttpError(415, 'only text, Markdown, PDF, CSV and JSON files are supported');
+      throw new HttpError(
+        415,
+        'only text, Markdown, PDF, CSV, JSON and image (PNG, JPEG, WebP) files are supported',
+      );
 
     const source = await sources.create(userId, cairnId, {
       ...detected,

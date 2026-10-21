@@ -8,7 +8,7 @@ import {
   SourceService,
   type IngestJob,
 } from '@cairn/core';
-import { createEmbedder, describeLlmError } from '@meirakrish/llm-kit';
+import { createEmbedder, createLlmClient, describeLlmError } from '@meirakrish/llm-kit';
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { loadConfig } from './config';
@@ -21,6 +21,8 @@ const embedder = await createEmbedder(config.embed, {
   overflowHint: 'lower the chunk size',
   log: (msg) => console.warn(msg),
 });
+// Reads images. Ollama is asked here whether the model can think (to turn it off): start Ollama first.
+const vision = await createLlmClient(config.llm, { log: (msg) => console.warn(msg) });
 // Status changes go to the cairn's Redis channel, which the api streams to browsers.
 const publisher = new Redis(config.redisUrl);
 const sources = new SourceService(db, { onChange: redisSourcePublisher(publisher) });
@@ -30,6 +32,7 @@ const ingest = new IngestService({
   sources,
   storage,
   embedder,
+  vision,
 });
 
 // BullMQ workers block on Redis, so they need a connection that never gives up on a command.
@@ -43,7 +46,7 @@ const worker = new Worker<IngestJob>(INGEST_QUEUE, createProcessor(ingest, sourc
 worker.on('error', (err) => console.error('worker error:', err));
 
 console.log(
-  `worker listening on queue "${INGEST_QUEUE}" (${config.embed.provider} ${embedder.model}, ${config.concurrency} at a time)`,
+  `worker listening on queue "${INGEST_QUEUE}" (${config.embed.provider} ${embedder.model}, images with ${vision.model}, ${config.concurrency} at a time)`,
 );
 // Not fatal: jobs retry until the embedder is reachable. Loading the model also takes the first-call delay.
 embedder.embed(['ping']).then(

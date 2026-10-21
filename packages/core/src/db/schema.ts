@@ -88,7 +88,7 @@ const readEditDelete = (name: string, cairnId: unknown, canDelete: (id: unknown)
 /** Vector length of chunks.embedding. Changing it needs a migration and re-embedding every chunk. */
 export const EMBEDDING_DIMENSIONS = 1024;
 
-export const SOURCE_KINDS = ['text', 'markdown', 'pdf', 'csv', 'json'] as const;
+export const SOURCE_KINDS = ['text', 'markdown', 'pdf', 'csv', 'json', 'image'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 export const SOURCE_STATUSES = ['pending', 'processing', 'ready', 'failed'] as const;
