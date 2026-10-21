@@ -3,9 +3,10 @@ import type { ChunkLocation, SourceKind } from '../db';
 import { DEFAULT_CHUNKING } from './chunk';
 import { csvSegments } from './csv';
 import { PermanentIngestError } from './errors';
+import { readHtml } from './html';
 import { jsonSegments } from './json';
 
-/** A run of text with one location: a whole text file, a Markdown section, a PDF page, CSV rows or JSON records. */
+/** A run of text with one location: a whole text file, a Markdown or web page section, a PDF page, CSV rows or JSON records. */
 export interface Segment {
   text: string;
   location: ChunkLocation;
@@ -30,6 +31,8 @@ export interface ExtractOptions {
   maxChars?: number;
   /** Reads a rendered scanned PDF page (PNG); without it, pages with no text layer are skipped. */
   readScannedPage?: (png: Uint8Array) => Promise<string>;
+  /** The Content-Type a web page was served with, for its charset. */
+  contentType?: string;
 }
 
 export async function extract(
@@ -49,7 +52,9 @@ export async function extract(
           ? csvSegments(decodeText(data), maxChars)
           : kind === 'json'
             ? jsonSegments(decodeText(data), maxChars)
-            : [{ text: decodeText(data), location: { offset: 0 } }];
+            : kind === 'web'
+              ? readHtml(data, opts.contentType).segments
+              : [{ text: decodeText(data), location: { offset: 0 } }];
 
   const total = segments.reduce((n, s) => n + s.text.length, 0);
   if (total > EXTRACT_LIMITS.maxChars) {

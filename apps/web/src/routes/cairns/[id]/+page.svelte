@@ -172,6 +172,7 @@
     csv: 'CSV',
     json: 'JSON',
     image: 'IMG',
+    web: 'WEB',
   };
 
   const LIVE_LABEL: Record<typeof live, string> = {

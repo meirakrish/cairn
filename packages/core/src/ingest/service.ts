@@ -61,6 +61,7 @@ export class IngestService {
         : await extract(source.kind, data, {
             maxChars: chunking.maxChars,
             readScannedPage: this.deps.vision && ((png) => transcribePage(this.deps.vision!, png)),
+            contentType: source.mime,
           });
     const chunks = chunkSegments(segments, chunking);
     if (chunks.length === 0) throw new PermanentIngestError('no text found in the file');

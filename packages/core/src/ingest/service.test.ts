@@ -47,6 +47,8 @@ async function uploaded(cairns: CairnService, kind: SourceKind, data: Uint8Array
     csv: 'text/csv',
     json: 'application/json',
     image: 'image/png',
+    // As a site sends it; the charset matters for web pages.
+    web: 'text/html; charset=windows-1252',
   };
   const mime = mimes[kind];
   const source = await sources.create(user.id, cairn.id, {
@@ -99,6 +101,22 @@ describe('IngestService', () => {
     expect(chunks[0]!.location.rows![0]).toBe(2);
     expect(chunks.at(-1)!.location.rows![1]).toBe(61);
     for (const c of chunks) expect(c.content.length).toBeLessThanOrEqual(200);
+  });
+
+  it('stores a web page as heading sections, decoded with its charset', async () => {
+    const { cairns, ingest } = setup();
+    const html = '<title>Hut</title><h2>Hours</h2><p>The caf\xe9 opens at 9.</p>';
+    const { user, source } = await uploaded(
+      cairns,
+      'web',
+      Uint8Array.from(html, (c) => c.charCodeAt(0)),
+    );
+
+    await ingest.process(user.id, source.id);
+    const chunks = await sources.listChunks(user.id, source.id);
+    expect(chunks.map((c) => [c.content, c.location])).toEqual([
+      ['## Hours\n\nThe café opens at 9.', { headings: ['Hours'] }],
+    ]);
   });
 
   it('stores the vision model’s description of an image', async () => {
