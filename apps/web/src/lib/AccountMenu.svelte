@@ -50,7 +50,7 @@
   {#if open}
     <div class="menu" role="menu">
       <div class="menu-who">
-        {#if user.name}<strong>{user.name}</strong>{/if}
+        {#if user.name}<strong dir="auto">{user.name}</strong>{/if}
         <span class="muted">{user.email}</span>
       </div>
       <button type="button" role="menuitem" disabled={signingOut} onclick={signOut}>

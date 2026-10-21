@@ -40,8 +40,9 @@
         {@const badge = sharedBadge(cairn)}
         <li>
           <a href={resolve('/cairns/[id]', { id: cairn.id })}>
-            <strong>{cairn.name}</strong>
-            {#if cairn.description}<span class="description">{cairn.description}</span>{/if}
+            <strong dir="auto">{cairn.name}</strong>
+            {#if cairn.description}<span class="description" dir="auto">{cairn.description}</span
+              >{/if}
             <small class="muted">
               {#if badge}{badge} ·
               {/if}Created {dateFormat.format(new Date(cairn.createdAt))}

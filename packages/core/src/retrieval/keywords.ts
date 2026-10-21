@@ -12,10 +12,20 @@ const STOPWORDS = new Set(
 
 const MAX_TERMS = 32;
 
-/** The words of a text that carry meaning: lowercased letters and digits, no stopwords or 1-letter words. */
+// Hebrew vowel points and cantillation; most text (and the indexed chunks) is written without them.
+// Only Hebrew's: other scripts, such as Devanagari, spell with combining marks.
+const HEBREW_MARKS = /(?=\p{Script=Hebrew})\p{M}/gu;
+
+/**
+ * The words of a text that carry meaning: lowercased letters and digits, no stopwords or 1-letter words.
+ * Hebrew vowel points are dropped, so a pointed word stays whole and matches its plain spelling.
+ */
 export function contentWords(text: string): Set<string> {
   const terms = new Set<string>();
-  for (const [word] of text.toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)) {
+  for (const [word] of text
+    .replace(HEBREW_MARKS, '')
+    .toLowerCase()
+    .matchAll(/[\p{L}\p{N}]+/gu)) {
     if (word.length > 1 && !STOPWORDS.has(word)) terms.add(word);
   }
   return terms;

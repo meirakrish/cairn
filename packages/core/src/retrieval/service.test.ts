@@ -199,6 +199,10 @@ describe('keywordQuery', () => {
     expect(keywordQuery("o'brien & co | (draft) !x:*")).toBe('brien | co | draft');
   });
 
+  it('keeps Hebrew words whole, without their vowel points', () => {
+    expect(keywordQuery('מָה הַמּוֹעֵד שֶׁל הַהַגָּשָׁה?')).toBe('מה | המועד | של | ההגשה');
+  });
+
   it('returns undefined when only common words remain', () => {
     expect(keywordQuery('What is it about?')).toBeUndefined();
     expect(keywordQuery('   ')).toBeUndefined();

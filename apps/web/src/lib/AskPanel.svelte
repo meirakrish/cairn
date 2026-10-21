@@ -107,6 +107,7 @@
         bind:value={question}
         {onkeydown}
         rows="2"
+        dir="auto"
         maxlength="1000"
         aria-label="Question"
         placeholder={canAsk
@@ -134,9 +135,9 @@
 
   {#if phase !== 'idle'}
     <article class="answer" aria-live="polite">
-      <p class="asked">{asked}</p>
+      <p class="asked" dir="auto">{asked}</p>
       {#if answer}
-        <p class="text">
+        <p class="text" dir="auto">
           {#each segments as segment, i (i)}
             {#if 'cite' in segment}
               <button
@@ -157,7 +158,7 @@
       {#if openPassage}
         <blockquote class="passage">
           <header>
-            <strong>[{open}] {openPassage.filename}</strong>
+            <strong>[{open}] <bdi>{openPassage.filename}</bdi></strong>
             {#if describeLocation(openPassage.location)}
               <span class="muted">· {describeLocation(openPassage.location)}</span>
             {/if}
@@ -177,7 +178,7 @@
               loading="lazy"
             />
           {/if}
-          <p>{openPassage.text}</p>
+          <p dir="auto">{openPassage.text}</p>
         </blockquote>
       {/if}
 
@@ -188,7 +189,7 @@
             {#each citedPassages as passage (passage.n)}
               <li>
                 <button type="button" class="link" onclick={() => toggle(passage.n)}>
-                  [{passage.n}] {passage.filename}{describeLocation(passage.location)
+                  [{passage.n}] <bdi>{passage.filename}</bdi>{describeLocation(passage.location)
                     ? ` · ${describeLocation(passage.location)}`
                     : ''}
                 </button>

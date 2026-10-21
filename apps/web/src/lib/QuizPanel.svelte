@@ -167,7 +167,7 @@
             title="You've seen every question for these files; this one repeats">Asked before</span
           >
         {/if}
-        <p class="quiz-question">{question.question}</p>
+        <p class="quiz-question" dir="auto">{question.question}</p>
 
         <ol class="options">
           {#each question.choices as choice, i (i)}
@@ -179,7 +179,7 @@
                 onclick={() => pick(i)}
               >
                 <span class="letter">{optionLetter(i)}</span>
-                <span>{choice}</span>
+                <span dir="auto">{choice}</span>
               </button>
             </li>
           {/each}
@@ -196,13 +196,13 @@
             {#if result.verdict === 'correct' && inARow >= 2}
               <span class="streak">{inARow} in a row 🔥</span>
             {/if}
-            <p>{result.explanation}</p>
+            <p dir="auto">{result.explanation}</p>
           </div>
 
           {#if showPassage}
             <blockquote class="passage">
               <header>
-                <strong>{result.passage.filename}</strong>
+                <strong><bdi>{result.passage.filename}</bdi></strong>
                 {#if describeLocation(result.passage.location)}
                   <span class="muted">· {describeLocation(result.passage.location)}</span>
                 {/if}
@@ -224,7 +224,7 @@
                   loading="lazy"
                 />
               {/if}
-              <p>{result.passage.text}</p>
+              <p dir="auto">{result.passage.text}</p>
             </blockquote>
           {/if}
         {/if}

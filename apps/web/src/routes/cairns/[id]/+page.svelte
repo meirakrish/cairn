@@ -253,7 +253,7 @@
 <div class="cairn-header">
   <div class="title">
     <div class="title-row">
-      <h1>{data.cairn.name}</h1>
+      <h1 dir="auto">{data.cairn.name}</h1>
       {#if badge}<span class="badge">{badge}</span>{/if}
       {#if isOwner}
         <button
@@ -269,7 +269,7 @@
         </button>
       {/if}
     </div>
-    {#if data.cairn.description}<p class="muted">{data.cairn.description}</p>{/if}
+    {#if data.cairn.description}<p class="muted" dir="auto">{data.cairn.description}</p>{/if}
   </div>
 
   {#if !sealed}
@@ -359,7 +359,7 @@
   <ul class="uploads">
     {#each uploads as upload (upload.key)}
       <li class:failed={upload.error}>
-        <span class="name">{upload.name}</span>
+        <span class="name" dir="auto">{upload.name}</span>
         {#if upload.error}
           <span class="error">{upload.error}</span>
           <button type="button" class="link" onclick={() => dismiss(upload.key)}>Dismiss</button>
@@ -418,10 +418,10 @@
               <span class="kind">{KIND_LABEL[source.kind]}</span>
               {#if source.url}
                 <ExternalLink class="name" href={source.url} title={source.url}
-                  >{source.filename}</ExternalLink
+                  ><bdi>{source.filename}</bdi></ExternalLink
                 >
               {:else}
-                <span class="name" title={source.filename}>{source.filename}</span>
+                <span class="name" dir="auto" title={source.filename}>{source.filename}</span>
               {/if}
               <span class="status {source.status}">{STATUS_LABEL[source.status]}</span>
               {#if refreshing === source.id}
@@ -497,7 +497,7 @@
 {#if dragging}
   <div class="drop-overlay" aria-hidden="true">
     <div>
-      <strong>Drop files to add them to {data.cairn.name}</strong>
+      <strong>Drop files to add them to <bdi>{data.cairn.name}</bdi></strong>
       <small>{UPLOAD_NOTE}</small>
     </div>
   </div>
