@@ -601,6 +601,26 @@ Open questions:
 - Decided: v1 queries one file at a time (no joins across files) and flat JSON only (no nested records). Dates in mixed formats are also out of scope.
 - Sealed callers: aggregates are not "copying" a source, but the VerbatimFilter must still run over the result rows.
 
+## Phase 15: table backfill (planned)
+
+Branch `phase15/table-backfill` (from `phase14/table-queries`; rebase onto `main` once Phase 14 is merged). Asked for on 2026-10-21. CSV and JSON files ingested before Phase 14 have chunks but no `source_rows`, and a ready source can't be requeued, so they never get table queries. This phase reads their stored files again and adds only the rows: no re-embedding, no model calls, chunks untouched.
+
+| Step | What                                                                                                                                                                                         | Status  |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1    | Marker: `sources.table_checked_at` (migration 0015). `complete()` sets it on every ingest; null means "not looked at for a table yet". Migration leaves existing rows null                    | planned |
+| 2    | core `SourceService.setTable(userId, sourceId, table)` (replace rows + columns + marker, one transaction, no status change) and `IngestService.backfillTable(userId, sourceId)` (read the stored file, `readTable`, `setTable`) | planned |
+| 3    | Worker: job data gets an optional `task: 'table'`; the processor calls `backfillTable` for it (jobId `table:<sourceId>`, since a source's ingest job id is taken); a missing file or a source that went away is skipped, not failed | planned |
+| 4    | Script `pnpm backfill:tables` (admin DB URL + Redis): lists ready CSV/JSON/web-CSV/JSON sources with a null marker, enqueues one job each as the uploader (the cairn owner if the uploader is gone), prints counts; `--dry-run` | planned |
+| 5    | Live check on the dev cairn: upload with Phase 13 code (or null a marker by hand), run the script, ask a counting question; docs: how to run it in minikube (`kubectl exec` / port-forward)  | planned |
+
+Design notes:
+
+- Why a marker: `columns` is null both for "never looked at" and for "looked, no table" (nested JSON, header-only CSV), so without it every run would re-read every non-table CSV/JSON.
+- Why a script and not startup work: it is a one-off like a migration; the worker and api run as users under RLS and can't list everyone's sources, while the script uses the admin URL only to find work and leaves the work itself to the worker as the uploader.
+- Safe to repeat: the marker makes a second run find nothing; a job that runs twice replaces the same rows. It doesn't touch `status`, so the UI shows nothing, and sources being ingested right now already write rows (they set the marker themselves).
+- Web sources that are CSV/JSON files are included (the stored snapshot is the file).
+- Not in scope: a user-facing "read again" button; re-running after a parser change (the marker could later hold a parser version instead of a timestamp).
+
 ## Current layout
 
 ```
