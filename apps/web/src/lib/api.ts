@@ -79,6 +79,10 @@ export async function updateCairn(id: string, input: UpdateCairnRequest): Promis
   return CairnResponse.parse(await request(fetch, 'PATCH', `/api/cairns/${id}`, input)).cairn;
 }
 
+export async function deleteCairn(id: string): Promise<void> {
+  await request(fetch, 'DELETE', `/api/cairns/${id}`);
+}
+
 export async function getCairn(fetch: Fetch, id: string): Promise<Cairn> {
   return CairnResponse.parse(await request(fetch, 'GET', `/api/cairns/${id}`)).cairn;
 }

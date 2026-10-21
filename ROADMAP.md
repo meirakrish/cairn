@@ -458,13 +458,15 @@ As built:
 
 Branch `phase9/cairn-deletion`. Asked for on 2026-10-21.
 
-| Step | What                                                                                                             | Status |
-| ---- | ---------------------------------------------------------------------------------------------------------------- | ------ |
-| 1    | core `CairnService.delete`, api `DELETE /api/cairns/:id` (owner only; also removes queued jobs and stored files) | done   |
-| 2    | Web: Delete on the cairn page (owner only, inline confirm and errors), back to the list afterwards               | todo   |
-| 3    | Web: the mode switch reads "Ask" / "Test me" instead of "Ask" / "Quiz"                                           | todo   |
+| Step | What                                                                                                              | Status |
+| ---- | ----------------------------------------------------------------------------------------------------------------- | ------ |
+| 1    | core `CairnService.delete`, api `DELETE /api/cairns/:id` (owner only; also removes queued jobs and stored files)  | done   |
+| 2    | Web: "Delete this cairn…" in the edit dialog (owner only, inline confirm and errors), back to the list afterwards | done   |
+| 3    | Web: the mode switch reads "Ask" / "Test me" instead of "Ask" / "Quiz"                                            | todo   |
 
 Step 1 as built: the database cascades sources, chunks, shares, questions, quiz data and the query log; the route lists the sources first, deletes the cairn, then drops each queued job and stored file (failures only logged). Non-owners with access get 403, others 404. No SSE event is sent for a deleted cairn.
+
+Step 2 as built: `deleteCairn` in `api.ts`; `CairnDialog` (edit mode) shows a link, then an inline warning with "Delete cairn" / "Keep it"; on success it refreshes the loads and goes to `/`. Not checked in a browser (needs a Google sign-in).
 
 ## Current layout
 
