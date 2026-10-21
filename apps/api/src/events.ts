@@ -1,15 +1,9 @@
-import {
-  cairnEventsChannel,
-  NotFoundError,
-  sourceDto,
-  type CairnService,
-  type SourceService,
-} from '@cairn/core';
+import { cairnEventsChannel, sourceDto, type CairnService, type SourceService } from '@cairn/core';
 import type { SourceEvent } from '@cairn/shared';
 import { Router } from 'express';
 import { requireUser } from './auth/middleware';
 import type { SessionStore } from './auth/session';
-import { idParam } from './cairns';
+import { idParam, requireAccess, requireCited } from './cairns';
 import type { Config } from './config';
 import type { EventHub } from './event-hub';
 
@@ -24,8 +18,8 @@ export interface EventsRouterDeps {
 /**
  * GET /api/cairns/:id/events: a Server-Sent Events stream of the cairn's sources. It starts with a
  * snapshot (subscribed first, so nothing falls between the snapshot and the first update), then sends
- * each change. Every heartbeat re-checks the session and the cairn, so logging out or losing access
- * ends the stream.
+ * each change. Every heartbeat re-checks the session and the cairn, so logging out, losing access or
+ * a share turning sealed ends the stream. Sealed callers get a 403: sources are not shown to them.
  */
 export function eventsRouter({ config, cairns, sources, sessions, hub }: EventsRouterDeps) {
   const router = Router();
@@ -33,7 +27,7 @@ export function eventsRouter({ config, cairns, sources, sessions, hub }: EventsR
   router.get('/:id/events', requireUser, async (req, res) => {
     const userId = req.user!.id;
     const cairnId = idParam(req, 'id', 'cairn');
-    if (!(await cairns.get(userId, cairnId))) throw new NotFoundError('cairn');
+    requireCited(await requireAccess(cairns, userId, cairnId));
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -74,7 +68,9 @@ export function eventsRouter({ config, cairns, sources, sessions, hub }: EventsR
     stream.heartbeat = setInterval(async () => {
       try {
         const session = await sessions.get(req);
-        if (session?.userId !== userId || !(await cairns.get(userId, cairnId))) return close();
+        if (session?.userId !== userId) return close();
+        const cairn = await cairns.get(userId, cairnId);
+        if (cairn?.access.visibility !== 'cited') return close();
         res.write(': ping\n\n');
       } catch {
         close();

@@ -1,19 +1,41 @@
-import { desc, eq } from 'drizzle-orm';
-import { cairns, withUser, type Cairn, type Db } from './db';
+import { desc, eq, getTableColumns, sql } from 'drizzle-orm';
+import { cairns, withUser, type Cairn, type CairnRole, type Db, type ShareVisibility } from './db';
+import type { CairnAccess } from './shares';
 
 export interface CreateCairnInput {
   name: string;
   description?: string | null;
 }
 
-// All access goes through withUser, so RLS limits every query to the caller's own cairns.
+/** A cairn with the caller's access to it (owner, or the share they see it through). */
+export interface CairnWithAccess extends Cairn {
+  access: CairnAccess;
+}
+
+// cairn_access() for each visible row; RLS already guarantees there is one.
+const withAccess = {
+  ...getTableColumns(cairns),
+  role: sql<CairnRole>`a.role`,
+  visibility: sql<ShareVisibility>`a.visibility`,
+  shareId: sql<string | null>`a.share_id`,
+};
+const accessJoin = sql`lateral cairn_access(${cairns.id}) a`;
+
+type Row = Cairn & { role: CairnRole; visibility: ShareVisibility; shareId: string | null };
+
+function toCairnWithAccess({ role, visibility, shareId, ...cairn }: Row): CairnWithAccess {
+  return { ...cairn, access: { role, visibility, shareId } };
+}
+
+// All access goes through withUser, so RLS limits every query to cairns the caller owns or is
+// shared on.
 export class CairnService {
   constructor(
     private db: Db,
     private embedModel: string,
   ) {}
 
-  async create(userId: string, input: CreateCairnInput): Promise<Cairn> {
+  async create(userId: string, input: CreateCairnInput): Promise<CairnWithAccess> {
     return withUser(this.db, userId, async (tx) => {
       const [cairn] = await tx
         .insert(cairns)
@@ -24,20 +46,30 @@ export class CairnService {
           embedModel: this.embedModel,
         })
         .returning();
-      return cairn!;
+      return { ...cairn!, access: { role: 'owner', visibility: 'cited', shareId: null } };
     });
   }
 
-  async get(userId: string, cairnId: string): Promise<Cairn | undefined> {
+  async get(userId: string, cairnId: string): Promise<CairnWithAccess | undefined> {
     return withUser(this.db, userId, async (tx) => {
-      const [cairn] = await tx.select().from(cairns).where(eq(cairns.id, cairnId));
-      return cairn;
+      const [row] = await tx
+        .select(withAccess)
+        .from(cairns)
+        .innerJoin(accessJoin, sql`true`)
+        .where(eq(cairns.id, cairnId));
+      return row && toCairnWithAccess(row);
     });
   }
 
-  async list(userId: string): Promise<Cairn[]> {
-    return withUser(this.db, userId, (tx) =>
-      tx.select().from(cairns).orderBy(desc(cairns.createdAt)),
-    );
+  /** Owned and shared cairns, newest first. */
+  async list(userId: string): Promise<CairnWithAccess[]> {
+    return withUser(this.db, userId, async (tx) => {
+      const rows = await tx
+        .select(withAccess)
+        .from(cairns)
+        .innerJoin(accessJoin, sql`true`)
+        .orderBy(desc(cairns.createdAt));
+      return rows.map(toCairnWithAccess);
+    });
   }
 }

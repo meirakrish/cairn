@@ -14,12 +14,25 @@ export type User = z.infer<typeof User>;
 export const MeResponse = z.object({ user: User });
 export type MeResponse = z.infer<typeof MeResponse>;
 
+/** The caller's relation to a cairn: its owner, or a share's role. */
+export const CairnRole = z.enum(['owner', 'editor', 'viewer']);
+export type CairnRole = z.infer<typeof CairnRole>;
+
+export const ShareRole = z.enum(['viewer', 'editor']);
+export type ShareRole = z.infer<typeof ShareRole>;
+
+/** cited: answers show their sources. sealed: answers only; sources are not shown. */
+export const Visibility = z.enum(['cited', 'sealed']);
+export type Visibility = z.infer<typeof Visibility>;
+
 export const Cairn = z.object({
   id: z.uuid(),
   name: z.string(),
   description: z.string().nullable(),
   embedModel: z.string(),
   createdAt: z.iso.datetime(),
+  role: CairnRole,
+  visibility: Visibility,
 });
 export type Cairn = z.infer<typeof Cairn>;
 
@@ -39,6 +52,45 @@ export type CairnResponse = z.infer<typeof CairnResponse>;
 
 export const ListCairnsResponse = z.object({ cairns: z.array(Cairn) });
 export type ListCairnsResponse = z.infer<typeof ListCairnsResponse>;
+
+export const Share = z.object({
+  id: z.uuid(),
+  kind: z.enum(['email', 'link']),
+  email: z.string().nullable(),
+  role: ShareRole,
+  visibility: Visibility,
+  expiresAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  /** Link shares: who opened the link. */
+  redeemedBy: z.array(z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() })),
+});
+export type Share = z.infer<typeof Share>;
+
+const shareOptions = {
+  role: ShareRole,
+  visibility: Visibility,
+  expiresAt: z.iso.datetime({ offset: true }).nullish(),
+};
+
+export const CreateShareRequest = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('email'),
+    email: z.string().trim().max(254).pipe(z.email()),
+    ...shareOptions,
+  }),
+  z.object({ kind: z.literal('link'), ...shareOptions }),
+]);
+export type CreateShareRequest = z.infer<typeof CreateShareRequest>;
+
+/** token: link shares only, returned once; the link is `/s/<token>`. */
+export const CreateShareResponse = z.object({ share: Share, token: z.string().optional() });
+export type CreateShareResponse = z.infer<typeof CreateShareResponse>;
+
+export const ListSharesResponse = z.object({ shares: z.array(Share) });
+export type ListSharesResponse = z.infer<typeof ListSharesResponse>;
+
+export const RedeemShareLinkResponse = z.object({ cairnId: z.uuid() });
+export type RedeemShareLinkResponse = z.infer<typeof RedeemShareLinkResponse>;
 
 export const SourceKind = z.enum(['text', 'markdown', 'pdf']);
 export type SourceKind = z.infer<typeof SourceKind>;

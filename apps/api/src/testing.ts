@@ -36,6 +36,7 @@ export function createTestApp() {
     UPLOAD_MAX_MEGA_BYTES: '1',
     SSE_HEARTBEAT_MS: '50',
     QUERY_RATE_LIMIT: '3',
+    SHARE_QUERY_RATE_LIMIT: '5',
   });
   const admin = createDb(env.adminUrl);
   const db = createDb(config.databaseUrl);

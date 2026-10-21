@@ -171,4 +171,33 @@ describe('GET /api/cairns/:id/events', () => {
     expect(await stream.next()).toBe('end');
     await eventually(() => t.hub.channels.length === 0);
   });
+
+  it('refuses sealed grantees, and ends a stream when its share turns sealed', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    const guest = await t.createUser();
+    const guestCookie = await t.signIn(guest.id);
+    const share = (visibility: string) =>
+      request(t.app)
+        .post(`/api/cairns/${cairnId}/shares`)
+        .set('Cookie', cookie)
+        .set('Origin', APP_ORIGIN)
+        .send({ kind: 'email', email: guest.email, role: 'viewer', visibility })
+        .expect(201);
+
+    const { body } = await share('cited');
+    const stream = await openStream(cairnId, guestCookie);
+    expect(await stream.next()).toMatchObject({ type: 'snapshot' });
+
+    await request(t.app)
+      .delete(`/api/cairns/${cairnId}/shares/${body.share.id}`)
+      .set('Cookie', cookie)
+      .set('Origin', APP_ORIGIN)
+      .expect(204);
+    await share('sealed');
+    expect(await stream.next()).toBe('end');
+    await request(t.app)
+      .get(`/api/cairns/${cairnId}/events`)
+      .set('Cookie', guestCookie)
+      .expect(403);
+  });
 });
