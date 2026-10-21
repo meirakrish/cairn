@@ -490,7 +490,7 @@ a {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .cairn-header .title {
@@ -908,10 +908,14 @@ button.cite.active {
   text-align: left;
 }
 
+/* A full column-width row, so the switch lines up with the title and the question box. */
+.mode-row {
+  margin-bottom: 0.75rem;
+}
+
 .mode-switch {
   display: inline-flex;
   gap: 0.25rem;
-  margin-bottom: 0.75rem;
   padding: 0.25rem;
   border-radius: 14px;
   background: var(--surface);
