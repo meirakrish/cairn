@@ -1032,6 +1032,7 @@ button.cite.active {
 }
 
 .verdict {
+  position: relative;
   margin-top: 1rem;
   padding: 0.875rem 1.125rem;
   border-radius: 14px;
@@ -1063,8 +1064,50 @@ button.cite.active {
   margin-top: 1rem;
 }
 
+.quiz-summary {
+  position: relative;
+  padding: 1.5rem 0 0.5rem;
+  text-align: center;
+}
+
+.quiz-summary .actions {
+  justify-content: center;
+}
+
 .quiz-summary h2 {
   margin: 0 0 0.5rem;
+}
+
+.trophy {
+  margin: 0;
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.streak {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .trophy {
+    animation: pop 0.5s ease-out;
+  }
+
+  @keyframes pop {
+    0% {
+      transform: scale(0.4);
+      opacity: 0;
+    }
+    70% {
+      transform: scale(1.15);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
 }
 
 .score-big {

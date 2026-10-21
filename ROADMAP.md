@@ -498,6 +498,8 @@ Quiz buttons (2026-10-21): End quiz moved from the top bar to the bottom row, ri
 
 Same question again (2026-10-21): a dev cairn (1 file, 3 passages, 15 bank questions, 51 attempts) kept showing three rewordings of one question ("served as / formed the foundation of the core monitoring platform"), because "seen" was an exact-text match and only new drafts were checked with `similarQuestion`. Now `unseen`, `unseenCount` and `seenLongestAgo` (core `quiz/service.ts`) treat a rewording (`sameQuestion`: same normalized text or `similarQuestion`) as the same question, in the bank and against what you were asked; they pick in code over the bank rather than in SQL. Old rewordings stay in the bank but are served as one. A cairn that can make only one distinct question still repeats it.
 
+Festive results (2026-10-21): a right answer shows "Right 🎉" with a confetti shower in the verdict box and, from two in a row, "N in a row 🔥"; the end screen is centred with an emoji and a headline by score (`cheer()` in `quiz.ts`: 🏆 Perfect score!, 🎉 Great job! from 80% of at least three answers, with confetti; 👏 Nicely done from 50%; 🌱 Good practice below). `Confetti.svelte` is CSS-only and hidden under `prefers-reduced-motion`. Wrong answers stay plain. Not checked in a browser.
+
 ## Current layout
 
 ```

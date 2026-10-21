@@ -3,8 +3,17 @@
   import type { QuizQuestion, QuizResult } from '@cairn/shared';
   import { describeLocation, pageLink } from './answer';
   import { answerQuiz, newQuizQuestion } from './api';
+  import Confetti from './Confetti.svelte';
   import ExternalLink from './ExternalLink.svelte';
-  import { describeScore, optionLetter, tally, VERDICT_LABEL, type Outcome } from './quiz';
+  import {
+    cheer,
+    describeScore,
+    optionLetter,
+    streak,
+    tally,
+    VERDICT_LABEL,
+    type Outcome,
+  } from './quiz';
 
   let { cairnId, readySources }: { cairnId: string; readySources: number } = $props();
 
@@ -23,6 +32,8 @@
   let started = false;
 
   const score = $derived(tally(outcomes));
+  const party = $derived(cheer(score));
+  const inARow = $derived(streak(outcomes));
   const canQuiz = $derived(readySources > 0);
 
   const message = (err: unknown, fallback: string) =>
@@ -120,7 +131,9 @@
     </form>
   {:else if phase === 'summary'}
     <div class="quiz-summary">
-      <h2>Quiz done</h2>
+      {#if party.party}<Confetti pieces={48} />{/if}
+      <p class="trophy" aria-hidden="true">{party.emoji}</p>
+      <h2>{party.title}</h2>
       <p class="score-big">{describeScore(score)}</p>
       <div class="actions">
         <button class="primary" type="button" onclick={begin}>New quiz</button>
@@ -176,7 +189,13 @@
 
         {#if result}
           <div class="verdict {result.verdict}">
-            <strong>{VERDICT_LABEL[result.verdict]}</strong>
+            {#if result.verdict === 'correct'}<Confetti />{/if}
+            <strong
+              >{VERDICT_LABEL[result.verdict]}{result.verdict === 'correct' ? ' 🎉' : ''}</strong
+            >
+            {#if result.verdict === 'correct' && inARow >= 2}
+              <span class="streak">{inARow} in a row 🔥</span>
+            {/if}
             <p>{result.explanation}</p>
           </div>
 
