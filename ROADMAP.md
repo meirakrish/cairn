@@ -4,7 +4,7 @@ Working notes for picking the project up in any session. The design is in [DESIG
 
 ## Conventions
 
-- One branch per step: `phase<N>/step<M>-<slug>`, pushed, PR only on request.
+- One branch per phase: `phase<N>/<slug>`; each step is one commit or more on it. Pushed, PR only on request. (Phases up to 8 used one branch per step.)
 - Update this file before every commit.
 
 ## Phase 1: foundation (done)
@@ -453,6 +453,18 @@ As built:
 - Live (qwen3.5:9b, 3-passage cairn): served questions 20–60 ms from the bank (≤ 0.8 s when waiting for a running write) instead of 3–7 s; 9 written-answer questions in a row all different; once the choice bank was exhausted, repeats came instantly and in seen-longest-ago order. Same-meaning questions in different words still get through now and then (e.g. two ways to ask about the Cybereason scale).
 - **Multiple choice only** (user's call, same day): written answers and model grading were removed: no format picker (Start quiz goes straight in), no `Grade` / grading prompt / `verdictOf` / `pointsToSupply`, verdicts are `correct` | `wrong`, `POST /quiz` takes no body, the answer takes `{ choice }` and never calls the model (so it isn't rate-limited). Migration 0009 deletes written-answer questions (their attempts cascade), copies past picks from `response` into `quiz_attempts.choice`, drops `format`, `key_points`, `response`, `feedback`, makes `choices` / `correct_choice` / `explanation` required and checks `correct_choice` is an index into `choices`. The grading findings above are kept as history.
 - Checked in the browser by the user (2026-10-21).
+
+## Phase 9: cairn deletion and mode switch
+
+Branch `phase9/cairn-deletion`. Asked for on 2026-10-21.
+
+| Step | What                                                                                                             | Status |
+| ---- | ---------------------------------------------------------------------------------------------------------------- | ------ |
+| 1    | core `CairnService.delete`, api `DELETE /api/cairns/:id` (owner only; also removes queued jobs and stored files) | done   |
+| 2    | Web: Delete on the cairn page (owner only, inline confirm and errors), back to the list afterwards               | todo   |
+| 3    | Web: the mode switch reads "Ask" / "Test me" instead of "Ask" / "Quiz"                                           | todo   |
+
+Step 1 as built: the database cascades sources, chunks, shares, questions, quiz data and the query log; the route lists the sources first, deletes the cairn, then drops each queued job and stored file (failures only logged). Non-owners with access get 403, others 404. No SSE event is sent for a deleted cairn.
 
 ## Current layout
 

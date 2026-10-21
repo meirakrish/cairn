@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { sources } from '@cairn/core';
+import { cairns, sources } from '@cairn/core';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { APP_ORIGIN, createTestApp } from './testing';
@@ -203,6 +203,26 @@ describe('DELETE /api/cairns/:id/sources/:sourceId', () => {
       .set('Origin', APP_ORIGIN)
       .expect(404);
     expect(await t.admin.select().from(sources)).toHaveLength(1);
+  });
+});
+
+describe('DELETE /api/cairns/:id', () => {
+  it('deletes the cairn with its sources, stored files and queued jobs, for the owner only', async () => {
+    const { cookie, cairnId } = await signedInWithCairn();
+    const { body } = await upload(cookie, cairnId, 'hello').expect(202);
+    const other = await t.signIn((await t.createUser()).id);
+    const del = (who: string) =>
+      request(t.app).delete(`/api/cairns/${cairnId}`).set('Cookie', who).set('Origin', APP_ORIGIN);
+
+    await del(other).expect(404);
+    expect(await t.admin.select().from(sources)).toHaveLength(1);
+
+    await del(cookie).expect(204);
+    expect(await t.admin.select().from(sources)).toEqual([]);
+    expect(await t.admin.select().from(cairns)).toEqual([]);
+    expect(t.storage.objects.size).toBe(0);
+    expect(await t.ingest.queue.getJob(body.source.id)).toBeUndefined();
+    await del(cookie).expect(404);
   });
 });
 

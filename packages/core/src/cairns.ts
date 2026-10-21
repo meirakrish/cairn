@@ -77,6 +77,17 @@ export class CairnService {
     });
   }
 
+  /** Deletes a cairn and, by cascade, everything in it; false unless the caller owns it. */
+  async delete(userId: string, cairnId: string): Promise<boolean> {
+    return withUser(this.db, userId, async (tx) => {
+      const deleted = await tx
+        .delete(cairns)
+        .where(eq(cairns.id, cairnId))
+        .returning({ id: cairns.id });
+      return deleted.length > 0;
+    });
+  }
+
   /** Owned and shared cairns, newest first. */
   async list(userId: string): Promise<CairnWithAccess[]> {
     return withUser(this.db, userId, async (tx) => {
