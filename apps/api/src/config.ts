@@ -18,6 +18,8 @@ const Env = z.object({
   UPLOAD_MAX_MEGA_BYTES: z.coerce.number().positive().default(25),
   // How often open event streams send a keep-alive and re-check access.
   SSE_HEARTBEAT_MS: z.coerce.number().int().min(10).default(25_000),
+  // Event streams one user may hold open at once (each open cairn page is one).
+  SSE_MAX_STREAMS_PER_USER: z.coerce.number().int().min(1).default(3),
   // Questions per minute per user.
   QUERY_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
   // Questions per minute through one share, across everyone using it (a link can reach many people).
@@ -38,6 +40,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     redisUrl: e.REDIS_URL,
     embedModel: e.EMBED_MODEL,
     sseHeartbeatMs: e.SSE_HEARTBEAT_MS,
+    sseMaxStreamsPerUser: e.SSE_MAX_STREAMS_PER_USER,
     queryRateLimit: e.QUERY_RATE_LIMIT,
     shareQueryRateLimit: e.SHARE_QUERY_RATE_LIMIT,
     uploadMaxBytes: Math.floor(e.UPLOAD_MAX_MEGA_BYTES * 1_000_000),

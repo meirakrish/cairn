@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { SourceEvent, type Source } from '@cairn/shared';
+  import { sseData } from '#lib/answer.ts';
   import { deleteSource, uploadSource } from '#lib/api.ts';
   import AskPanel from '#lib/AskPanel.svelte';
   import { sharedBadge } from '#lib/share.ts';
@@ -25,7 +26,8 @@
 
   let sources = $state<Source[]>([]);
   let uploads = $state<Upload[]>([]);
-  let live = $state<'connecting' | 'live' | 'lost'>('connecting');
+  // busy: refused because this user has too many live views open (other tabs).
+  let live = $state<'connecting' | 'live' | 'lost' | 'busy'>('connecting');
   let dragging = $state(false);
   // Inline delete confirmation (no browser dialogs): the source being confirmed, and per-row errors.
   let confirming = $state<string | null>(null);
@@ -46,33 +48,47 @@
     else sources = sources.filter((s) => s.id !== event.sourceId);
   }
 
-  // Live updates. Every (re)connect starts with a fresh snapshot, so nothing is missed while away.
+  // Live updates over fetch rather than EventSource, which hides why a connection was refused.
+  // Every (re)connect starts with a fresh snapshot, so nothing is missed while away.
   $effect(() => {
     if (sealed) return;
     const url = `/api/cairns/${data.cairn.id}/events`;
-    let stream: EventSource | undefined;
+    const controller = new AbortController();
     let retry: ReturnType<typeof setTimeout> | undefined;
     let delay = 2000;
 
-    const connect = () => {
+    const reconnect = (ms = delay) => {
+      retry = setTimeout(connect, ms);
+      delay = Math.min(delay * 2, 30_000);
+    };
+
+    async function connect() {
       live = 'connecting';
-      stream = new EventSource(url);
-      stream.onopen = () => {
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (res.status === 429) {
+          // The server frees a slot as soon as another tab closes; try again after it says.
+          live = 'busy';
+          return reconnect(Number(res.headers.get('retry-after') || 25) * 1000);
+        }
+        if (!res.ok || !res.body) throw new Error(`events: ${res.status}`);
         live = 'live';
         delay = 2000;
-      };
-      stream.onmessage = (m) => apply(SourceEvent.parse(JSON.parse(m.data)));
-      stream.onerror = () => {
-        // The browser retries dropped connections itself; it gives up (CLOSED) on errors like 401/404.
-        if (stream?.readyState !== EventSource.CLOSED) return void (live = 'connecting');
-        live = 'lost';
-        retry = setTimeout(connect, delay);
-        delay = Math.min(delay * 2, 30_000);
-      };
-    };
-    connect();
+        for await (const message of sseData(res.body)) {
+          apply(SourceEvent.parse(JSON.parse(message)));
+        }
+      } catch {
+        // Handled below: a network error is a lost connection; an abort means the page is gone.
+      }
+      if (controller.signal.aborted) return;
+      // The stream ended or failed (network, server restart, lost access): retry with backoff.
+      live = 'lost';
+      reconnect();
+    }
+
+    void connect();
     return () => {
-      stream?.close();
+      controller.abort();
       clearTimeout(retry);
     };
   });
@@ -207,7 +223,13 @@
   <div class="sources-header">
     <h2>Files</h2>
     <span class="live {live}" title="Status updates">
-      {live === 'live' ? 'Live' : live === 'connecting' ? 'Connecting…' : 'Disconnected, retrying'}
+      {live === 'live'
+        ? 'Live'
+        : live === 'connecting'
+          ? 'Connecting…'
+          : live === 'busy'
+            ? 'Paused: Cairn is open in too many tabs'
+            : 'Disconnected, retrying'}
     </span>
   </div>
 

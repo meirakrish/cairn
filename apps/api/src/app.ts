@@ -26,6 +26,7 @@ import type { EventHub } from './event-hub';
 import { eventsRouter } from './events';
 import { queryRouter } from './query';
 import { shareLinksRouter, sharesRouter } from './shares';
+import { StreamLimiter } from './stream-limit';
 import type { Config } from './config';
 import { HttpError } from './errors';
 
@@ -59,7 +60,12 @@ export function createApp({ config, db, redis, storage, ingest, hub, embedder, l
   const cairns = new CairnService(db, config.embedModel);
   const sources = new SourceService(db, { onChange: redisSourcePublisher(redis) });
   const answers = new AnswerService(db, new RetrievalService(db, embedder), llm);
-  app.use('/api/cairns', eventsRouter({ config, cairns, sources, sessions, hub }));
+  // A lease outlives three missed heartbeats, then stops counting.
+  const limiter = new StreamLimiter(redis, {
+    limit: config.sseMaxStreamsPerUser,
+    leaseMs: config.sseHeartbeatMs * 3,
+  });
+  app.use('/api/cairns', eventsRouter({ config, cairns, sources, sessions, hub, limiter }));
   app.use('/api/cairns', queryRouter({ config, cairns, answers, redis }));
   app.use('/api/cairns', cairnsRouter({ config, cairns, sources, storage, ingest }));
   const shares = new ShareService(db);
