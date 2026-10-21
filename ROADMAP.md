@@ -462,7 +462,7 @@ Branch `phase9/cairn-deletion`. Asked for on 2026-10-21.
 | ---- | ----------------------------------------------------------------------------------------------------------------- | ------ |
 | 1    | core `CairnService.delete`, api `DELETE /api/cairns/:id` (owner only; also removes queued jobs and stored files)  | done   |
 | 2    | Web: "Delete this cairn…" in the edit dialog (owner only, inline confirm and errors), back to the list afterwards | done   |
-| 3    | Web: the mode switch reads "Ask" / "Test me" instead of "Ask" / "Quiz"                                            | todo   |
+| 3    | Web: the mode switch reads "Ask" / "Test me" instead of "Ask" / "Quiz"                                            | done   |
 
 Step 1 as built: the database cascades sources, chunks, shares, questions, quiz data and the query log; the route lists the sources first, deletes the cairn, then drops each queued job and stored file (failures only logged). Non-owners with access get 403, others 404. No SSE event is sent for a deleted cairn.
 
@@ -536,4 +536,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: merge `phase7/step3-ingest-api` and `phase7/step4-web-eval`, run `pnpm db:migrate`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: merge `phase9/cairn-deletion`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
