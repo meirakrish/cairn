@@ -1,5 +1,7 @@
 import {
+  checkWebUrl,
   NotFoundError,
+  PermanentIngestError,
   sourceDto,
   type CairnAccess,
   type CairnService,
@@ -9,7 +11,9 @@ import {
   type SourceService,
 } from '@cairn/core';
 import {
+  AddUrlRequest,
   CreateCairnRequest,
+  type DuplicateUrlResponse,
   type Cairn,
   type CairnResponse,
   type ListCairnsResponse,
@@ -61,6 +65,18 @@ export function idParam(req: Request, name: string, what: string): string {
   return value;
 }
 
+/** The URL as stored (checkWebUrl's form, without the #fragment, which names a spot, not a page). */
+function webUrl(raw: string): string {
+  try {
+    const url = checkWebUrl(raw);
+    url.hash = '';
+    return url.href;
+  } catch (err) {
+    if (err instanceof PermanentIngestError) throw new HttpError(400, err.message);
+    throw err;
+  }
+}
+
 export interface CairnsRouterDeps {
   config: Config;
   cairns: CairnService;
@@ -72,6 +88,16 @@ export interface CairnsRouterDeps {
 export function cairnsRouter({ config, cairns, sources, storage, ingest }: CairnsRouterDeps) {
   const router = Router();
   router.use(requireUser);
+
+  // On failure the source stays, marked failed with the reason, so the user sees what happened.
+  async function queue(userId: string, sourceId: string, failure: string) {
+    try {
+      await ingest.enqueue({ sourceId, userId });
+    } catch (err) {
+      await sources.fail(userId, sourceId, failure);
+      throw err;
+    }
+  }
 
   router.get('/', async (req, res) => {
     const body: ListCairnsResponse = { cairns: (await cairns.list(req.user!.id)).map(toDto) };
@@ -112,12 +138,38 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
     res.json(body);
   });
 
-  // Upload one file: stored in object storage, then queued for the worker. 202: processing is async.
+  // Add a source: a file (multipart upload, stored in object storage) or a web page (JSON { url },
+  // fetched by the worker). Either way it is queued for the worker; 202: processing is async.
   router.post('/:id/sources', async (req, res) => {
     const userId = req.user!.id;
     const cairnId = idParam(req, 'id', 'cairn');
     const { role } = await requireAccess(cairns, userId, cairnId);
     if (role === 'viewer') throw new HttpError(403, 'only the owner and editors can add sources');
+
+    if (req.is('application/json')) {
+      const url = webUrl(AddUrlRequest.parse(req.body).url);
+      const existing = await sources.findByUrl(userId, cairnId, url);
+      if (existing) {
+        const body: DuplicateUrlResponse = {
+          error: 'this page is already in the cairn; refresh it instead',
+          source: sourceDto(existing),
+        };
+        res.status(409).json(body);
+        return;
+      }
+      // Kind, name, type and size are placeholders until the worker has fetched the page.
+      const source = await sources.create(userId, cairnId, {
+        kind: 'web',
+        filename: url,
+        mime: 'text/html',
+        size: 0,
+        url,
+      });
+      await queue(userId, source.id, 'could not queue the page for fetching');
+      const body: SourceResponse = { source: sourceDto(source) };
+      res.status(202).json(body);
+      return;
+    }
 
     const upload = await readUpload(req, config.uploadMaxBytes);
     if (upload.data.length === 0) throw new HttpError(400, 'the file is empty');
@@ -140,13 +192,30 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
       await sources.delete(userId, source.id);
       throw err;
     }
-    try {
-      await ingest.enqueue({ sourceId: source.id, userId });
-    } catch (err) {
-      await sources.fail(userId, source.id, 'could not queue the file for processing');
-      throw err;
-    }
+    await queue(userId, source.id, 'could not queue the file for processing');
 
+    const body: SourceResponse = { source: sourceDto(source) };
+    res.status(202).json(body);
+  });
+
+  // Fetch a web page again; its chunks are replaced when the new version is ready.
+  router.post('/:id/sources/:sourceId/refresh', async (req, res) => {
+    const userId = req.user!.id;
+    const cairnId = idParam(req, 'id', 'cairn');
+    const access = await requireAccess(cairns, userId, cairnId);
+    requireCited(access);
+    if (access.role === 'viewer') {
+      throw new HttpError(403, 'only the owner and editors can refresh pages');
+    }
+    const existing = await sources.get(userId, idParam(req, 'sourceId', 'source'));
+    if (!existing || existing.cairnId !== cairnId) throw new NotFoundError('source');
+    if (!existing.url) throw new HttpError(400, 'only web pages can be refreshed');
+
+    const source = await sources.requeue(userId, existing.id);
+    if (!source) throw new HttpError(409, 'the page is already being fetched');
+    // The finished job keeps the source's id, and adding a job under a used id does nothing.
+    await ingest.remove(source.id);
+    await queue(userId, source.id, 'could not queue the page for fetching');
     const body: SourceResponse = { source: sourceDto(source) };
     res.status(202).json(body);
   });

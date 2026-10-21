@@ -63,6 +63,43 @@ describe('readHtml', () => {
     expect(text).toContain('1. Not a list * really [x] under_score');
   });
 
+  it('keeps all of <main>, with every heading, minus its menus', () => {
+    const section = (h: string) => `<div class="heading"><h2>${h}</h2></div><p>${words(40, h)}</p>`;
+    const html = `<body><nav>Site menu</nav><main><header>Tools</header>
+      <p>${words(40, 'intro')}</p>${['History', 'Today', 'Concerns'].map(section).join('')}
+      <div role="navigation">Related pages</div></main><footer>Footer</footer></body>`;
+    const page = readHtml(enc(html));
+    expect(page.segments.map((s) => s.location.headings)).toEqual([
+      [],
+      ['History'],
+      ['Today'],
+      ['Concerns'],
+    ]);
+    const text = page.segments.map((s) => s.text).join('\n');
+    for (const gone of ['Site menu', 'Tools', 'Related pages', 'Footer']) {
+      expect(text).not.toContain(gone);
+    }
+  });
+
+  it('prefers a lone <article> over the rest of <main>', () => {
+    const html = `<main><ul><li>src/</li><li>test/</li></ul>
+      <article><h2>Readme</h2><p>${words(60, 'readme')}</p></article><h2>Releases</h2></main>`;
+    const text = readHtml(enc(html))
+      .segments.map((s) => s.text)
+      .join('\n');
+    expect(text).toContain('## Readme');
+    expect(text).not.toMatch(/src\/|Releases/);
+  });
+
+  it('fences bare <pre> code, so a # comment is not a heading, and drops permalink anchors', () => {
+    const html = `<main><h2>Numbers<a href="#numbers">¶</a></h2><p>${words(40)}</p>
+      <pre><span># this is a comment</span>\nx = 1 \`\`\` y\n</pre></main>`;
+    const page = readHtml(enc(html));
+    expect(page.segments).toHaveLength(1);
+    expect(page.segments[0]!.location.headings).toEqual(['Numbers']);
+    expect(page.segments[0]!.text).toContain('````\n# this is a comment\nx = 1 ``` y\n````');
+  });
+
   it('uses the whole body when the page is too short for Readability', () => {
     const page = readHtml(enc('<title>Note</title><body><p>The gate code is 4512.</p></body>'));
     expect(page).toEqual({

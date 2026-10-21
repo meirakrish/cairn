@@ -123,6 +123,8 @@ export const sources = pgTable(
     index('sources_cairn_id_idx').on(t.cairnId, t.createdAt),
     // Target of chunks' composite FK, which keeps a chunk in its source's cairn.
     unique('sources_id_cairn_id_key').on(t.id, t.cairnId),
+    // A page is added to a cairn once; adding it again means refreshing it (uploads have no url).
+    uniqueIndex('sources_cairn_url_key').on(t.cairnId, t.url),
     check('sources_kind_check', sql`${t.kind} in (${inList(SOURCE_KINDS)})`),
     check('sources_status_check', sql`${t.status} in (${inList(SOURCE_STATUSES)})`),
     check('sources_size_check', sql`${t.size} >= 0`),

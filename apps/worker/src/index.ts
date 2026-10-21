@@ -1,6 +1,7 @@
 import {
   CairnService,
   createDb,
+  fetchUrl,
   INGEST_QUEUE,
   IngestService,
   redisSourcePublisher,
@@ -33,6 +34,7 @@ const ingest = new IngestService({
   storage,
   embedder,
   vision,
+  fetchPage: (url) => fetchUrl(url, { maxBytes: config.fetchMaxBytes }),
 });
 
 // BullMQ workers block on Redis, so they need a connection that never gives up on a command.

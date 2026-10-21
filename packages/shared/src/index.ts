@@ -111,6 +111,8 @@ export const Source = z.object({
   size: z.number().int(),
   status: SourceStatus,
   error: z.string().nullable(),
+  /** The page a web source is fetched from; null for uploads. */
+  url: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -118,6 +120,14 @@ export type Source = z.infer<typeof Source>;
 
 export const SourceResponse = z.object({ source: Source });
 export type SourceResponse = z.infer<typeof SourceResponse>;
+
+/** POST /api/cairns/:id/sources as JSON: add a web page. */
+export const AddUrlRequest = z.object({ url: z.string().trim().min(1).max(2048) });
+export type AddUrlRequest = z.infer<typeof AddUrlRequest>;
+
+/** 409 from adding a page the cairn already has: the existing source, to refresh instead. */
+export const DuplicateUrlResponse = z.object({ error: z.string(), source: Source });
+export type DuplicateUrlResponse = z.infer<typeof DuplicateUrlResponse>;
 
 export const ListSourcesResponse = z.object({ sources: z.array(Source) });
 export type ListSourcesResponse = z.infer<typeof ListSourcesResponse>;
