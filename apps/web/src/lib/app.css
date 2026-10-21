@@ -727,10 +727,23 @@ button.link:hover {
   font-size: 0.85rem;
 }
 
-.delete-cairn {
-  display: grid;
-  gap: 0.5rem;
-  justify-items: start;
+.cairn-header .title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.icon-button.small {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.delete-confirm {
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
 }
 
 button.danger {

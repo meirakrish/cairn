@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { goto, invalidateAll } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import { SourceEvent, type Source } from '@cairn/shared';
   import AddLinks from '#lib/AddLinks.svelte';
   import { hostOf, sseData } from '#lib/answer.ts';
-  import { deleteSource, refreshSource, uploadSource } from '#lib/api.ts';
+  import { deleteCairn, deleteSource, refreshSource, uploadSource } from '#lib/api.ts';
   import AskPanel from '#lib/AskPanel.svelte';
   import CairnDialog from '#lib/CairnDialog.svelte';
   import ExternalLink from '#lib/ExternalLink.svelte';
@@ -42,6 +44,10 @@
   let rowErrors = $state<Record<string, string>>({});
   let fileInput = $state<HTMLInputElement>();
   let addingLinks = $state(false);
+  // Inline cairn delete confirmation (no browser dialogs).
+  let confirmingDelete = $state(false);
+  let deletingCairn = $state(false);
+  let deleteError = $state<string | null>(null);
   let editDialog = $state<CairnDialog>();
   // Ask questions, or be quizzed (callers who can see sources only; the api enforces it too).
   let mode = $state<'ask' | 'quiz'>('ask');
@@ -169,6 +175,21 @@
     }
   }
 
+  async function removeCairn() {
+    deletingCairn = true;
+    deleteError = null;
+    try {
+      await deleteCairn(data.cairn.id);
+      await invalidateAll();
+      await goto(resolve('/'));
+    } catch (err) {
+      deleteError = err instanceof Error ? err.message : 'Could not delete the cairn.';
+      confirmingDelete = false;
+    } finally {
+      deletingCairn = false;
+    }
+  }
+
   async function refresh(source: Source) {
     refreshing = source.id;
     delete rowErrors[source.id];
@@ -235,9 +256,55 @@
 
 <div class="cairn-header">
   <div class="title">
-    <h1>{data.cairn.name}</h1>
-    {#if badge}<span class="badge">{badge}</span>{/if}
+    <div class="title-row">
+      <h1>{data.cairn.name}</h1>
+      {#if badge}<span class="badge">{badge}</span>{/if}
+      {#if isOwner}
+        <button
+          type="button"
+          class="icon-button small"
+          aria-label="Edit name and description"
+          title="Edit name and description"
+          onclick={() => editDialog?.open(data.cairn)}
+        >
+          <svg class="icon" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"
+            ><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></svg
+          >
+        </button>
+        <button
+          type="button"
+          class="icon-button small"
+          aria-label="Delete this cairn"
+          title="Delete this cairn"
+          aria-expanded={confirmingDelete}
+          disabled={deletingCairn}
+          onclick={() => (confirmingDelete = !confirmingDelete)}
+        >
+          <svg class="icon" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"
+            ><path
+              d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"
+            /></svg
+          >
+        </button>
+      {/if}
+    </div>
     {#if data.cairn.description}<p class="muted">{data.cairn.description}</p>{/if}
+    {#if confirmingDelete}
+      <p class="confirm delete-confirm">
+        Delete “{data.cairn.name}” with all its files, shares and quiz history? This can't be
+        undone.
+        <button type="button" class="danger" disabled={deletingCairn} onclick={removeCairn}
+          >{deletingCairn ? 'Deleting…' : 'Delete cairn'}</button
+        >
+        <button
+          type="button"
+          class="link"
+          disabled={deletingCairn}
+          onclick={() => (confirmingDelete = false)}>Keep it</button
+        >
+      </p>
+    {/if}
+    {#if deleteError}<p class="error">{deleteError}</p>{/if}
   </div>
 
   {#if !sealed}
@@ -337,20 +404,6 @@
       {/if}
       {#if canUpload}<small class="muted">{UPLOAD_NOTE}</small>{/if}
     </Popover>
-  {/if}
-
-  {#if isOwner}
-    <button
-      type="button"
-      class="icon-button"
-      aria-label="Edit name and description"
-      title="Edit name and description"
-      onclick={() => editDialog?.open(data.cairn)}
-    >
-      <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-        ><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></svg
-      >
-    </button>
   {/if}
 
   {#if !sealed}
