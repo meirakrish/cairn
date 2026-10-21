@@ -531,6 +531,15 @@ a {
   color: var(--accent);
 }
 
+.icon-button.destructive {
+  color: var(--error);
+}
+
+.icon-button.destructive:hover {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  color: var(--error);
+}
+
 .popover {
   position: relative;
 }

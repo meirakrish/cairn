@@ -482,11 +482,11 @@ As built: the panel lists every source (delete, refresh, status as before) and, 
 
 Branch `phase11/cairn-header-actions` (from `phase10/sources-panel`). Asked for on 2026-10-21.
 
-| Step | What                                                                                                                                     | Status |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| 1    | Web: a small pencil and a trash button beside the title (owner only); delete moves out of the edit dialog, confirm shows under the title | done   |
+| Step | What                                                                                                                                      | Status |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 1    | Web: a small pencil beside the title; the red trash button sits with the Sources and Share buttons (owner only), opening a confirm dialog | done   |
 
-As built: `CairnDialog` is back to create/edit only; the trash opens `DeleteCairnDialog` (a modal like the edit one: name, warning, Cancel / Delete cairn, inline error; Escape and backdrop are ignored while deleting). Not checked in a browser.
+As built: `CairnDialog` is back to create/edit only; the trash (red, right-hand group, `.icon-button.destructive`) opens `DeleteCairnDialog` (a modal like the edit one: name, warning, Cancel / Delete cairn, inline error; Escape and backdrop are ignored while deleting). Not checked in a browser.
 
 ## Current layout
 
