@@ -555,13 +555,20 @@ Design: the model never writes SQL. It writes a small JSON **query plan** (filte
 | Step | What                                                                                                                                                                      | Status  |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | 1    | Storage: `source_rows` (cairn_id, source_id, row, data jsonb; RLS like chunks) + `sources.columns` (name, type: number / date / text, inferred at ingest); migration 0014 | done    |
-| 2    | Ingest: CSV and JSON/JSONL (flat records) also write rows and column types; chunks stay (lookups, keyword search); nested JSON keeps only its chunks                      | planned |
+| 2    | Ingest: CSV and JSON/JSONL (flat records) also write rows and column types; chunks stay (lookups, keyword search); nested JSON keeps only its chunks                      | done    |
 | 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | planned |
 | 4    | core `TableQueryService`: router prompt (question + cairn's table schemas → plan or "passages"), run, then answer from the result; fall back to passages on a bad plan     | planned |
 | 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | planned |
 | 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | planned |
 
 Step 1 as built: migration 0014. `source_rows` has the same shape and RLS as `chunks` (composite FK to `sources(id, cairn_id)`, readable where the cairn is, writable by owners and editors, deleted with the source), unique on `(source_id, row)`; `row` is the same number the chunk locations use. `sources.columns` is `TableColumn[]` (`{ name, type }`, type `number` | `date` | `text`), null for non-tables. Nothing writes either yet (step 2); `src/db/source-rows-rls.test.ts` covers the policies. Dev DB is migrated.
+
+Step 2 as built: `ingest/table.ts` (`csvTable`, `jsonTable`, `readTable`) builds a `ParsedTable` from the same file the chunks come from; `IngestService` passes it to `SourceService.complete(..., table)`, which replaces `source_rows` and sets `sources.columns` (null when the file has no table) in the chunk transaction.
+
+- Types: a column is `number` when every non-empty value is a plain number (`-?(0|[1-9]\d*)(\.\d+)?`, safe integers: "007", "1,234", "1e3" and ids past 2^53 stay text), `date` when every value is a valid ISO date or date-time, else `text`. One bad value makes the column text; values are then kept as written. Dates are stored as the strings given. Empty cells are absent from `data`.
+- CSV: any file with a header and a data row; extra fields get `column N`. JSON: only an array of flat objects (or JSONL of them), at least 2 records; columns are the keys in order of first appearance, `row` is the array index (JSONL: line number). A wrapper like `{"orders": [...]}` and nested values stay chunks-only (could be added later).
+- Limits: over 200,000 rows or 200 columns, the file keeps its chunks but no table (`TABLE_LIMITS`).
+- A ready source can't be requeued, so "processed again" happens only for web refreshes and retries after failure; `complete` handles both by replacing.
 
 Open questions:
 

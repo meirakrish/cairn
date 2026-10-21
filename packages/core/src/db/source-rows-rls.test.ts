@@ -34,14 +34,12 @@ async function setup() {
       .update(sources)
       .set({ columns: [...columns] })
       .where(eq(sources.id, source.id));
-    await tx
-      .insert(sourceRows)
-      .values({
-        cairnId: cairn.id,
-        sourceId: source.id,
-        row: 2,
-        data: { Region: 'West', Amount: 5 },
-      });
+    await tx.insert(sourceRows).values({
+      cairnId: cairn.id,
+      sourceId: source.id,
+      row: 2,
+      data: { Region: 'West', Amount: 5 },
+    });
   });
   return { owner, guest, cairn, source };
 }

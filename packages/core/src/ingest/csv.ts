@@ -75,7 +75,7 @@ export function sniffDelimiter(text: string): Delimiter {
 }
 
 /** Column names from the header row: trimmed, blanks named by position, duplicates numbered. */
-function columnNames(header: string[]): string[] {
+export function columnNames(header: string[]): string[] {
   const seen = new Map<string, number>();
   return header.map((raw, i) => {
     const name = raw.trim() || `column ${i + 1}`;
