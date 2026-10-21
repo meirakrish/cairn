@@ -199,7 +199,8 @@
         }}
       />
       <small class="muted"
-        >Up to 25 MB each. Scanned PDFs without a text layer are not supported yet.</small
+        >Up to 25 MB each. Images and scanned PDF pages are read by the AI model, which takes a few
+        seconds per page.</small
       >
     </div>
   {/if}

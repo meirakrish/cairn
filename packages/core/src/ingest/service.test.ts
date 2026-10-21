@@ -8,6 +8,7 @@ import { SourceService } from '../sources';
 import { MemoryObjectStore } from '../storage';
 import { createTestDbs, createUser, makePdf, resetDb } from '../testing';
 import { PermanentIngestError } from './errors';
+import { PAGE_PROMPT } from './image';
 import { IngestService } from './service';
 
 const { admin, app } = createTestDbs();
@@ -131,6 +132,22 @@ describe('IngestService', () => {
     await expect(withVision.ingest.process(broken.user.id, broken.source.id)).rejects.toThrow(
       PermanentIngestError,
     );
+  });
+
+  it('reads scanned PDF pages with the vision model', async () => {
+    const vision = scriptedLlm({ stream: [['Minutes of the trail committee, page two.']] });
+    const { cairns, ingest } = setup(undefined, vision);
+    const text = 'The first page has a proper text layer, long enough to count as text.';
+    const { user, source } = await uploaded(cairns, 'pdf', makePdf([text, '']));
+
+    await ingest.process(user.id, source.id);
+    const chunks = await sources.listChunks(user.id, source.id);
+    expect(chunks.map((c) => [c.location.page, c.content])).toEqual([
+      [1, text],
+      [2, 'Minutes of the trail committee, page two.'],
+    ]);
+    const prompt = String(vision.calls[0]!.messages[0]!.content);
+    expect(prompt).toBe(PAGE_PROMPT);
   });
 
   it('keeps PDF page numbers', async () => {

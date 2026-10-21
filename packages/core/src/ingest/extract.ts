@@ -1,4 +1,4 @@
-import { extractText, getDocumentProxy } from 'unpdf';
+import { extractText, getDocumentProxy, renderPageAsImage } from 'unpdf';
 import type { ChunkLocation, SourceKind } from '../db';
 import { DEFAULT_CHUNKING } from './chunk';
 import { csvSegments } from './csv';
@@ -16,19 +16,33 @@ export const EXTRACT_LIMITS = {
   maxChars: 2_000_000,
   maxPdfPages: 2_000,
   pdfTimeoutMs: 60_000,
+  /** A PDF page with fewer visible characters than this is treated as scanned (no text layer). */
+  scannedPageChars: 50,
+  /** Scanned pages read by the vision model per file: each takes seconds. */
+  maxScannedPages: 100,
+  /** Longest side of a rendered scanned page, in pixels (prepareImage caps what the model gets). */
+  renderSide: 1568,
+  renderTimeoutMs: 30_000,
 };
 
-/** `maxChars`: the chunk size, so record formats (CSV, JSON) can group whole records into chunks. */
+export interface ExtractOptions {
+  /** The chunk size, so record formats (CSV, JSON) can group whole records into chunks. */
+  maxChars?: number;
+  /** Reads a rendered scanned PDF page (PNG); without it, pages with no text layer are skipped. */
+  readScannedPage?: (png: Uint8Array) => Promise<string>;
+}
+
 export async function extract(
   kind: SourceKind,
   data: Uint8Array,
-  maxChars = DEFAULT_CHUNKING.maxChars,
+  opts: ExtractOptions = {},
 ): Promise<Segment[]> {
+  const { maxChars = DEFAULT_CHUNKING.maxChars } = opts;
   // Images need a model; IngestService reads them (describeImage).
   if (kind === 'image') throw new Error('extract() does not read images');
   const segments =
     kind === 'pdf'
-      ? await extractPdf(data)
+      ? await extractPdf(data, opts.readScannedPage)
       : kind === 'markdown'
         ? markdownSections(decodeText(data))
         : kind === 'csv'
@@ -91,22 +105,24 @@ export function markdownSections(text: string): Segment[] {
   }));
 }
 
-async function extractPdf(data: Uint8Array): Promise<Segment[]> {
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new PermanentIngestError('the PDF took too long to read')),
-      EXTRACT_LIMITS.pdfTimeoutMs,
-    );
+    timer = setTimeout(() => reject(new PermanentIngestError(message)), ms);
   });
-  try {
-    return await Promise.race([readPdf(data), timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function readPdf(data: Uint8Array): Promise<Segment[]> {
+const visibleChars = (text: string) => text.replace(/\s/g, '').length;
+
+/**
+ * Text per page. Pages with (almost) no text layer are scanned: with `readScannedPage` they are
+ * rendered and read by it (the vision model), otherwise skipped. A PDF with no text at all fails.
+ */
+async function extractPdf(
+  data: Uint8Array,
+  readScannedPage?: (png: Uint8Array) => Promise<string>,
+): Promise<Segment[]> {
   let pdf;
   try {
     // Uploaded PDFs are untrusted: no font loading, no system fonts (pdf.js 5 no longer uses eval).
@@ -125,15 +141,54 @@ async function readPdf(data: Uint8Array): Promise<Segment[]> {
         `the PDF has ${pdf.numPages} pages; the limit is ${EXTRACT_LIMITS.maxPdfPages}`,
       );
     }
-    const { text } = await extractText(pdf, { mergePages: false });
+    const { text } = await withTimeout(
+      extractText(pdf, { mergePages: false }),
+      EXTRACT_LIMITS.pdfTimeoutMs,
+      'the PDF took too long to read',
+    );
     const pages = text.map((page, i) => ({ text: page, location: { page: i + 1 } }));
+
+    const scanned = readScannedPage
+      ? pages.filter((p) => visibleChars(p.text) < EXTRACT_LIMITS.scannedPageChars)
+      : [];
+    if (scanned.length > EXTRACT_LIMITS.maxScannedPages) {
+      throw new PermanentIngestError(
+        `the PDF has ${scanned.length} scanned pages (no text layer); reading more than ${EXTRACT_LIMITS.maxScannedPages} per file is not supported, so split it`,
+      );
+    }
+    for (const page of scanned) {
+      const png = await withTimeout(
+        renderPage(pdf, page.location.page),
+        EXTRACT_LIMITS.renderTimeoutMs,
+        `page ${page.location.page} of the PDF took too long to render`,
+      );
+      const read = await readScannedPage!(png);
+      if (visibleChars(read) > visibleChars(page.text)) page.text = read;
+    }
+
     if (pages.every((p) => p.text.trim() === '')) {
       throw new PermanentIngestError(
-        'no text found in the PDF; scanned PDFs need OCR, which is not supported yet',
+        readScannedPage
+          ? 'no text found in the PDF'
+          : 'no text found in the PDF; scanned PDFs need a vision model, and none is configured',
       );
     }
     return pages;
   } finally {
     await pdf.loadingTask.destroy();
   }
+}
+
+type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
+
+/** A page as PNG, its longest side EXTRACT_LIMITS.renderSide pixels. */
+async function renderPage(pdf: PdfDocument, pageNumber: number): Promise<Uint8Array> {
+  const page = await pdf.getPage(pageNumber);
+  const { width, height } = page.getViewport({ scale: 1 });
+  const scale = EXTRACT_LIMITS.renderSide / Math.max(width, height);
+  const png = await renderPageAsImage(pdf, pageNumber, {
+    canvasImport: () => import('@napi-rs/canvas'),
+    scale,
+  });
+  return new Uint8Array(png);
 }

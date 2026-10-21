@@ -96,7 +96,7 @@ describe('packRecords', () => {
 describe('extract (csv)', () => {
   it('decodes, normalises line endings and packs with the given chunk size', async () => {
     const data = new TextEncoder().encode('﻿a;b\r\n1;2\r\n3;4\r\n');
-    expect(await extract('csv', data, 2400)).toEqual([
+    expect(await extract('csv', data, { maxChars: 2400 })).toEqual([
       { text: 'a: 1; b: 2\na: 3; b: 4', location: { rows: [2, 3] } },
     ]);
   });
