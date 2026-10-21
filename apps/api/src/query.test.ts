@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { AnswerEvent } from '@cairn/shared';
+import { AnswerEvent, SealedAnswerEvent } from '@cairn/shared';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { APP_ORIGIN, createTestApp } from './testing';
@@ -121,5 +121,37 @@ describe('POST /api/cairns/:id/query', () => {
     } finally {
       console.error = quiet;
     }
+  });
+
+  it('streams sealed callers text only: no passages, file names or citations', async () => {
+    const secret =
+      'The vault code is 4471 and it opens the north door of the archive every Monday before noon.';
+    const { cookie, cairnId } = await signedInWithChunks([secret]);
+    const guest = await t.createUser();
+    const guestCookie = await t.signIn(guest.id);
+    await request(t.app)
+      .post(`/api/cairns/${cairnId}/shares`)
+      .set('Cookie', cookie)
+      .set('Origin', APP_ORIGIN)
+      .send({ kind: 'email', email: guest.email, role: 'viewer', visibility: 'sealed' })
+      .expect(201);
+    const llm = t.script({ stream: [[`Code 4471 [1]. Quote: ${secret}`]] });
+
+    const res = await fetch(`${base}/api/cairns/${cairnId}/query`, {
+      method: 'POST',
+      headers: { cookie: guestCookie, origin: APP_ORIGIN, 'content-type': 'application/json' },
+      body: JSON.stringify({ question: 'What is the code?' }),
+    });
+    const raw = await res.text();
+    const events = raw
+      .split('\n\n')
+      .filter((block) => block.startsWith('data: '))
+      .map((block) => SealedAnswerEvent.parse(JSON.parse(block.slice(6))));
+
+    expect(events.map((e) => e.type).at(-1)).toBe('done');
+    const text = events.map((e) => (e.type === 'delta' ? e.text : '')).join('');
+    expect(text).toBe('Code 4471. Quote: ….');
+    expect(raw).not.toMatch(/passages|notes\.txt|cited|sourceId|north door/);
+    expect(String(llm.calls[0]!.messages[1]!.content)).not.toContain('notes.txt');
   });
 });

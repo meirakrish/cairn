@@ -164,3 +164,15 @@ export const AnswerEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('error'), message: z.string() }),
 ]);
 export type AnswerEvent = z.infer<typeof AnswerEvent>;
+
+/**
+ * Messages on POST /api/cairns/:id/query for sealed callers: only the answer text and the end. By
+ * design there is no type for passages or citations to travel in; the text has had verbatim runs
+ * from the documents replaced with "…".
+ */
+export const SealedAnswerEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('delta'), text: z.string() }),
+  z.object({ type: z.literal('done'), latencyMs: z.number().int() }),
+  z.object({ type: z.literal('error'), message: z.string() }),
+]);
+export type SealedAnswerEvent = z.infer<typeof SealedAnswerEvent>;

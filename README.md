@@ -161,7 +161,7 @@ Uploads accept text, Markdown and PDF. The type comes from the file's bytes (a P
 
 A cairn is shared with a Google account by email, or by a link that the recipient opens while signed in. A share has a `role` (`viewer` asks questions, `editor` also adds sources) and a `visibility` (`cited` shows sources, `sealed` hides them; editors are always cited). Only the owner manages shares, deletes sources or changes the cairn. Revoking or expiring a share ends access at once. The database decides access: `cairn_access()` (used by RLS and by `ShareService.access`) returns the caller's best active grant.
 
-Sealed callers get 403 on the source list, uploads/deletes and the events stream. Questions are rate-limited per user (`QUERY_RATE_LIMIT`) and, through a share, per share across everyone using it (`SHARE_QUERY_RATE_LIMIT`, default 60/min).
+Sealed callers get 403 on the source list, uploads/deletes and the events stream. Their questions are answered as `SealedAnswerEvent`s (text and `done` only): the prompt has no file names or locations and asks the model not to quote or cite, and any run of 12 words copied from a passage is replaced with "…" before it is sent. Questions are rate-limited per user (`QUERY_RATE_LIMIT`) and, through a share, per share across everyone using it (`SHARE_QUERY_RATE_LIMIT`, default 60/min).
 
 ## Tests
 

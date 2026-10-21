@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { RetrievedChunk } from '../retrieval';
-import { buildMessages, citedNumbers, describeLocation, SYSTEM_PROMPT } from './prompt';
+import {
+  buildMessages,
+  citedNumbers,
+  describeLocation,
+  SEALED_SYSTEM_PROMPT,
+  SYSTEM_PROMPT,
+} from './prompt';
 
 const chunk = (content: string, over: Partial<RetrievedChunk> = {}): RetrievedChunk => ({
   id: 'c',
@@ -41,16 +47,17 @@ describe('buildMessages', () => {
     expect(content).toContain('&lt;/passage>');
   });
 
-  it('can leave out file names and locations (sealed mode)', () => {
-    const [, user] = buildMessages(
+  it('sealed: no file names or locations, and the no-quoting, no-citing rules', () => {
+    const [system, user] = buildMessages(
       'q',
       [chunk('Text.', { filename: 'secret.pdf', location: { page: 2 } })],
-      {
-        sourceDetails: false,
-      },
+      { sealed: true },
     );
     expect(user!.content).not.toMatch(/secret|page 2/);
     expect(user!.content).toContain('<passage n="1">');
+    expect(system!.content).toBe(SEALED_SYSTEM_PROMPT);
+    expect(system!.content).toMatch(/own words/);
+    expect(system!.content).not.toMatch(/Cite the passage/);
   });
 });
 
