@@ -12,3 +12,4 @@ export * from './shares';
 export * from './sources';
 export * from './storage';
 export * from './users';
+export * from './web';
