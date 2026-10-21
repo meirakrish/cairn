@@ -267,7 +267,7 @@ Step 2 as built:
 - `src/ingest/records.ts` `packRecords(records, maxChars)`: whole rows packed into segments ≤ maxChars (a longer row stands alone and the chunker splits it); location `rows: [first, last]` (spreadsheet numbering, header = row 1). Reused by JSONL in step 3. `extract(kind, data, maxChars)` gets the chunk size for this.
 - `ChunkLocation.rows` (core + shared); `describeLocation` → `row 7` / `rows 2–40` (core prompt and web).
 - Tests: parser, sniffing, segments, packing, extract (BOM, CRLF), ingest end to end.
-- Live check pending: on 2026-10-21 Ollama on Windows failed with `llama-server binary not found` (its install is broken; reinstall/repair Ollama). The script is `/tmp/claude-1000/-home-meira-cairn/084921f8-e56a-42b0-8f49-ed0594e319c1/scratchpad/live-csv.mts` (copy into `apps/api/`, run with `node_modules/.bin/tsx live-csv.mts`).
+- Checked live (qwen3.5:9b, 120-row `;`-separated CSV): exact lookups are right and cite the right row range ("how many cairns on Saint Elmo's Climb", "which region is T117"); 4–8 s per answer. "List hard trails in the Coast region" (a filter over two columns) gave 11 trails, 4 of them wrong: the model filters rows unreliably. Expected (aggregates and filters are out of scope); a SQL-over-table feature would fix it.
 
 ## Current layout
 
@@ -320,6 +320,7 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - `drizzle-kit generate` asks interactively when policies are replaced ("created or renamed?"), which fails without a TTY. Run it under `script` and press Enter for each prompt ("create" is the default): `(for i in $(seq 30); do sleep 1.5; printf '\r'; done) | script -qfc "npx drizzle-kit generate --name X" /dev/null` in `packages/core`.
 - SQL functions (`cairn_access`, `redeem_share_link`) are hand-written in migrations; drizzle-kit doesn't track them, so changing one means a new custom migration (`CREATE OR REPLACE`).
 - minikube stopped twice on 2026-10-21 (WSL sleep?); `minikube start -p cairn`, then `pnpm infra:forward` reconnects by itself.
+- Ollama auto-update broke the install on 2026-10-21: the running server locked `ggml-cpu-haswell.dll`, the update was aborted, and the rollback deleted `llama-server.exe` ("llama-server binary not found"; see `%LOCALAPPDATA%\Ollama\upgrade.log`). Fix: stop `ollama app.exe` and `ollama.exe` (`Get-Process "ollama app", ollama, llama-server | Stop-Process -Force`), then reinstall (`irm https://ollama.com/install.ps1 | iex`; exit code 5 = files still locked). Quit Ollama before updates. After reinstall (0.40.7) both models load on the GPU together (5.6 + 1.2 GB VRAM).
 - 2026-10-21: Ollama hit `CUDA error: a PTX JIT compilation failed` again (llm-kit's retry recovered) and the embedding server crashed once (`0xc0000005`); a rerun worked. Watch whether the driver fix still holds.
 - psql is not installed on WSL; use `kubectl --context cairn -n cairn exec -it postgres-0 -- psql -U postgres cairn`.
 
