@@ -15,6 +15,8 @@ describe('detectKind', () => {
     expect(detectKind('notes.MARKDOWN', text)?.kind).toBe('markdown');
     expect(detectKind('notes.txt', text)).toEqual({ kind: 'text', mime: 'text/plain' });
     expect(detectKind('no-extension', text)?.kind).toBe('text');
+    expect(detectKind('data.csv', text)).toEqual({ kind: 'csv', mime: 'text/csv' });
+    expect(detectKind('data.TSV', text)?.kind).toBe('csv');
   });
 
   it('rejects binary content, even with a text extension', () => {

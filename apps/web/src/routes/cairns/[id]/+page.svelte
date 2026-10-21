@@ -185,13 +185,13 @@
       ondragleave={() => (dragging = false)}
       {ondrop}
     >
-      <p>Drop text, Markdown or PDF files here</p>
+      <p>Drop text, Markdown, PDF or CSV files here</p>
       <button type="button" onclick={() => fileInput?.click()}>Choose files</button>
       <input
         bind:this={fileInput}
         type="file"
         multiple
-        accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"
+        accept=".txt,.md,.markdown,.pdf,.csv,.tsv,text/plain,text/markdown,application/pdf,text/csv"
         hidden
         onchange={(e) => {
           void addFiles(e.currentTarget.files);

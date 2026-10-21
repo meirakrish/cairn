@@ -1,8 +1,10 @@
 import { extractText, getDocumentProxy } from 'unpdf';
 import type { ChunkLocation, SourceKind } from '../db';
+import { DEFAULT_CHUNKING } from './chunk';
+import { csvSegments } from './csv';
 import { PermanentIngestError } from './errors';
 
-/** A run of text with one location: a whole text file, a Markdown section, or a PDF page. */
+/** A run of text with one location: a whole text file, a Markdown section, a PDF page, or CSV rows. */
 export interface Segment {
   text: string;
   location: ChunkLocation;
@@ -15,13 +17,20 @@ export const EXTRACT_LIMITS = {
   pdfTimeoutMs: 60_000,
 };
 
-export async function extract(kind: SourceKind, data: Uint8Array): Promise<Segment[]> {
+/** `maxChars`: the chunk size, so record formats (CSV) can group whole rows into chunks. */
+export async function extract(
+  kind: SourceKind,
+  data: Uint8Array,
+  maxChars = DEFAULT_CHUNKING.maxChars,
+): Promise<Segment[]> {
   const segments =
     kind === 'pdf'
       ? await extractPdf(data)
       : kind === 'markdown'
         ? markdownSections(decodeText(data))
-        : [{ text: decodeText(data), location: { offset: 0 } }];
+        : kind === 'csv'
+          ? csvSegments(decodeText(data), maxChars)
+          : [{ text: decodeText(data), location: { offset: 0 } }];
 
   const total = segments.reduce((n, s) => n + s.text.length, 0);
   if (total > EXTRACT_LIMITS.maxChars) {

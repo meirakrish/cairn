@@ -2,7 +2,7 @@ import { fakeEmbedder } from '@meirakrish/llm-kit/testing';
 import { ContextOverflowError } from '@meirakrish/llm-kit';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from '../cairns';
-import { EMBEDDING_DIMENSIONS } from '../db';
+import { EMBEDDING_DIMENSIONS, type SourceKind } from '../db';
 import { SourceService } from '../sources';
 import { MemoryObjectStore } from '../storage';
 import { createTestDbs, createUser, makePdf, resetDb } from '../testing';
@@ -34,10 +34,15 @@ function setup(embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS })) {
   return { cairns, ingest, embedder };
 }
 
-async function uploaded(cairns: CairnService, kind: 'text' | 'markdown' | 'pdf', data: Uint8Array) {
+async function uploaded(cairns: CairnService, kind: SourceKind, data: Uint8Array) {
   const user = await createUser(admin.db);
   const cairn = await cairns.create(user.id, { name: 'C' });
-  const mime = { text: 'text/plain', markdown: 'text/markdown', pdf: 'application/pdf' }[kind];
+  const mime = {
+    text: 'text/plain',
+    markdown: 'text/markdown',
+    pdf: 'application/pdf',
+    csv: 'text/csv',
+  }[kind];
   const source = await sources.create(user.id, cairn.id, {
     kind,
     filename: 'f',
@@ -65,6 +70,29 @@ describe('IngestService', () => {
     expect(chunks.at(-1)?.location).toEqual({ headings: ['Trails', 'Safety'] });
     expect(embedder.calls.flat()).toEqual(chunks.map((c) => c.content));
     expect((await sources.get(user.id, source.id))?.status).toBe('ready');
+  });
+
+  it('stores CSV rows in whole-row chunks with their row ranges', async () => {
+    const { cairns, ingest } = setup();
+    const rows = Array.from(
+      { length: 60 },
+      (_, i) => `T-${i},${'trail '.repeat(8).trim()},${i * 10}`,
+    );
+    const { user, source } = await uploaded(
+      cairns,
+      'csv',
+      utf8(['id,route,length', ...rows].join('\n')),
+    );
+
+    await ingest.process(user.id, source.id);
+    const chunks = await sources.listChunks(user.id, source.id);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]!.content.split('\n')[0]).toBe(
+      'id: T-0; route: trail trail trail trail trail trail trail trail; length: 0',
+    );
+    expect(chunks[0]!.location.rows![0]).toBe(2);
+    expect(chunks.at(-1)!.location.rows![1]).toBe(61);
+    for (const c of chunks) expect(c.content.length).toBeLessThanOrEqual(200);
   });
 
   it('keeps PDF page numbers', async () => {

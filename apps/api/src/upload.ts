@@ -70,10 +70,12 @@ export function cleanFilename(name: string): string {
 }
 
 const MARKDOWN_EXTENSIONS = /\.(md|markdown)$/i;
+const CSV_EXTENSIONS = /\.(csv|tsv)$/i;
 
 /**
  * Decides the kind from the bytes, not the client's Content-Type: a PDF signature, or valid UTF-8 text
- * (Markdown by extension). Anything else, including binary formats renamed to .txt, is unsupported.
+ * (Markdown or CSV by extension). Anything else, including binary formats renamed to .txt, is
+ * unsupported.
  */
 export function detectKind(
   filename: string,
@@ -87,7 +89,7 @@ export function detectKind(
   } catch {
     return undefined;
   }
-  return MARKDOWN_EXTENSIONS.test(filename)
-    ? { kind: 'markdown', mime: 'text/markdown' }
-    : { kind: 'text', mime: 'text/plain' };
+  if (MARKDOWN_EXTENSIONS.test(filename)) return { kind: 'markdown', mime: 'text/markdown' };
+  if (CSV_EXTENSIONS.test(filename)) return { kind: 'csv', mime: 'text/csv' };
+  return { kind: 'text', mime: 'text/plain' };
 }
