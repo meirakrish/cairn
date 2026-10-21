@@ -1,0 +1,2 @@
+ALTER TABLE "sources" DROP CONSTRAINT "sources_status_check";--> statement-breakpoint
+ALTER TABLE "sources" ADD CONSTRAINT "sources_status_check" CHECK ("sources"."status" in ('pending', 'processing', 'ready', 'failed', 'rejected'));

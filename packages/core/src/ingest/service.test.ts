@@ -5,6 +5,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from '../cairns';
 import { EMBEDDING_DIMENSIONS, type SourceKind } from '../db';
 import { SourceService } from '../sources';
+import { LlmModerator } from '../moderation';
 import { MemoryObjectStore } from '../storage';
 import { createTestDbs, createUser, makePdf, resetDb } from '../testing';
 import type { FetchedPage } from '../web';
@@ -29,6 +30,7 @@ function setup(
   embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS }),
   vision?: LlmClient,
   fetchPage?: (url: string) => Promise<FetchedPage>,
+  moderator?: LlmModerator,
 ) {
   const cairns = new CairnService(app.db, embedder.model);
   const ingest = new IngestService({
@@ -38,6 +40,7 @@ function setup(
     embedder,
     vision,
     fetchPage,
+    moderator,
     chunking: { maxChars: 200, overlapChars: 40 },
   });
   return { cairns, ingest, embedder };
@@ -407,5 +410,62 @@ describe('IngestService', () => {
       await ingest.process(file.user.id, file.source.id);
       expect(await sources.requeue(file.user.id, file.source.id)).toBeUndefined();
     });
+  });
+});
+
+describe('IngestService moderation', () => {
+  it('stores text the moderator allows, after checking all of it', async () => {
+    const llm = scriptedLlm({ structured: () => ({ category: 'none' }) });
+    const { cairns, ingest } = setup(undefined, undefined, undefined, new LlmModerator(llm));
+    const { user, source } = await uploaded(cairns, 'text', utf8('Cairns mark the route.'));
+
+    expect(await ingest.process(user.id, source.id)).toMatchObject({ status: 'ready' });
+    expect(llm.calls).toHaveLength(1);
+    expect(String(llm.calls[0]!.messages[1]!.content)).toContain('Cairns mark the route.');
+  });
+
+  it('rejects blocked text: no chunks, no embedding, stored file deleted', async () => {
+    const llm = scriptedLlm({ structured: [{ category: 'violence' }] });
+    const embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS });
+    const { cairns, ingest } = setup(embedder, undefined, undefined, new LlmModerator(llm));
+    const { user, source } = await uploaded(cairns, 'text', utf8('Something awful.'));
+
+    expect(await ingest.process(user.id, source.id)).toEqual({
+      status: 'rejected',
+      category: 'violence',
+    });
+    expect(await sources.get(user.id, source.id)).toMatchObject({
+      status: 'rejected',
+      error: 'Not added: it contains graphic violence',
+    });
+    expect(await sources.listChunks(user.id, source.id)).toEqual([]);
+    expect(embedder.calls).toEqual([]);
+    expect(storage.objects.has(source.storageKey)).toBe(false);
+    // A late duplicate job leaves it rejected.
+    expect(await ingest.process(user.id, source.id)).toMatchObject({ status: 'skipped' });
+  });
+
+  it('checks what the vision model read from an image', async () => {
+    const png = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: '#888' },
+    })
+      .png()
+      .toBuffer();
+    const vision = scriptedLlm({ stream: [['A detailed picture of gore.']] });
+    const llm = scriptedLlm({ structured: [{ category: 'violence' }] });
+    const { cairns, ingest } = setup(undefined, vision, undefined, new LlmModerator(llm));
+    const { user, source } = await uploaded(cairns, 'image', png);
+
+    expect(await ingest.process(user.id, source.id)).toMatchObject({ status: 'rejected' });
+    expect(String(llm.calls[0]!.messages[1]!.content)).toContain('A detailed picture of gore.');
+  });
+
+  it('lets model errors through for a retry, leaving the source processing', async () => {
+    const llm = scriptedLlm({ structured: [new Error('ollama down')] });
+    const { cairns, ingest } = setup(undefined, undefined, undefined, new LlmModerator(llm));
+    const { user, source } = await uploaded(cairns, 'text', utf8('Fine text.'));
+
+    await expect(ingest.process(user.id, source.id)).rejects.toThrow('ollama down');
+    expect((await sources.get(user.id, source.id))?.status).toBe('processing');
   });
 });

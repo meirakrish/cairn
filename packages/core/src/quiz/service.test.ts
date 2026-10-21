@@ -292,7 +292,7 @@ describe('QuizService.next', () => {
     expect(first.filter((q) => /foundation/.test(q.question))).toHaveLength(1);
 
     // Then repeats, the foundation question counted once and not twice in a row.
-    const repeats = [];
+    const repeats: string[] = [];
     for (let i = 0; i < 6; i++) repeats.push((await quiz.next(user.id, cairn.id)).question);
     repeats.forEach((q, i) => {
       if (i > 0) expect(q).not.toBe(repeats[i - 1]);

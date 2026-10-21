@@ -3,6 +3,7 @@ import { isContextOverflow, ContextOverflowError } from '@meirakrish/llm-kit';
 import type { CairnService } from '../cairns';
 import { NotFoundError } from '../errors';
 import type { Source } from '../db';
+import { rejectedReason, type ModerationCategory, type Moderator } from '../moderation';
 import type { SourceService } from '../sources';
 import type { ObjectStore } from '../storage';
 import type { FetchedPage } from '../web';
@@ -22,11 +23,15 @@ export interface IngestDeps {
   vision?: LlmClient;
   /** Fetches web sources (fetchUrl with the size cap); without it, web sources fail. */
   fetchPage?: (url: string) => Promise<FetchedPage>;
+  /** Checks the extracted text before it is embedded; without it, nothing is checked. */
+  moderator?: Moderator;
   chunking?: ChunkOptions;
 }
 
 export type IngestResult =
-  { status: 'ready'; chunks: number } | { status: 'skipped'; reason: 'gone' | 'already ready' };
+  | { status: 'ready'; chunks: number }
+  | { status: 'rejected'; category: ModerationCategory }
+  | { status: 'skipped'; reason: 'gone' | 'already ready' };
 
 /**
  * Turns one stored source into embedded chunks: extract → chunk → embed → store, as the uploader.
@@ -72,6 +77,14 @@ export class IngestService {
           }));
     const chunks = chunkSegments(segments, chunking);
     if (chunks.length === 0) throw new PermanentIngestError('no text found in the file');
+
+    // Image and scan descriptions are text by now, so they are checked like everything else.
+    const verdict = await this.deps.moderator?.check(segments.map((s) => s.text).join('\n\n'));
+    if (verdict && !verdict.allowed) {
+      await this.deps.storage.delete(source.storageKey);
+      await sources.reject(userId, sourceId, rejectedReason(verdict.category));
+      return { status: 'rejected', category: verdict.category };
+    }
 
     let vectors: number[][];
     try {

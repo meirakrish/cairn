@@ -99,7 +99,7 @@ export type RedeemShareLinkResponse = z.infer<typeof RedeemShareLinkResponse>;
 export const SourceKind = z.enum(['text', 'markdown', 'pdf', 'csv', 'json', 'image', 'web']);
 export type SourceKind = z.infer<typeof SourceKind>;
 
-export const SourceStatus = z.enum(['pending', 'processing', 'ready', 'failed']);
+export const SourceStatus = z.enum(['pending', 'processing', 'ready', 'failed', 'rejected']);
 export type SourceStatus = z.infer<typeof SourceStatus>;
 
 export const Source = z.object({

@@ -7,6 +7,7 @@ import {
   type CairnService,
   type CairnWithAccess,
   type IngestQueue,
+  type Moderator,
   type ObjectStore,
   type SourceService,
 } from '@cairn/core';
@@ -26,7 +27,12 @@ import { z } from 'zod';
 import { requireUser } from './auth/middleware';
 import type { Config } from './config';
 import { HttpError } from './errors';
+import { checkText } from './moderation';
 import { cleanFilename, detectKind, readUpload } from './upload';
+
+/** What moderation reads of a cairn: its name and description. */
+const cairnText = ({ name, description }: CreateCairnRequest) =>
+  description ? `${name}\n\n${description}` : name;
 
 function toDto({ id, name, description, embedModel, createdAt, access }: CairnWithAccess): Cairn {
   return {
@@ -83,9 +89,17 @@ export interface CairnsRouterDeps {
   sources: SourceService;
   storage: ObjectStore;
   ingest: IngestQueue;
+  moderator: Moderator;
 }
 
-export function cairnsRouter({ config, cairns, sources, storage, ingest }: CairnsRouterDeps) {
+export function cairnsRouter({
+  config,
+  cairns,
+  sources,
+  storage,
+  ingest,
+  moderator,
+}: CairnsRouterDeps) {
   const router = Router();
   router.use(requireUser);
 
@@ -106,6 +120,7 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
 
   router.post('/', async (req, res) => {
     const input = CreateCairnRequest.parse(req.body);
+    await checkText(moderator, cairnText(input));
     const body: CairnResponse = { cairn: toDto(await cairns.create(req.user!.id, input)) };
     res.status(201).json(body);
   });
@@ -122,7 +137,9 @@ export function cairnsRouter({ config, cairns, sources, storage, ingest }: Cairn
     const cairnId = idParam(req, 'id', 'cairn');
     const access = await requireAccess(cairns, userId, cairnId);
     if (access.role !== 'owner') throw new HttpError(403, 'only the owner can edit a cairn');
-    const cairn = await cairns.update(userId, cairnId, UpdateCairnRequest.parse(req.body));
+    const input = UpdateCairnRequest.parse(req.body);
+    await checkText(moderator, cairnText(input));
+    const cairn = await cairns.update(userId, cairnId, input);
     if (!cairn) throw new NotFoundError('cairn');
     const body: CairnResponse = { cairn: toDto(cairn) };
     res.json(body);

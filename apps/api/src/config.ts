@@ -1,3 +1,4 @@
+import { resolveModerationConfig } from '@cairn/core';
 import { z } from 'zod';
 
 const Env = z.object({
@@ -46,6 +47,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     queryRateLimit: e.QUERY_RATE_LIMIT,
     shareQueryRateLimit: e.SHARE_QUERY_RATE_LIMIT,
     quizPrefetch: e.QUIZ_PREFETCH,
+    // MODERATION_ENABLED / MODERATION_MODEL: checks cairn names and questions.
+    moderation: resolveModerationConfig(env),
     uploadMaxBytes: Math.floor(e.UPLOAD_MAX_MEGA_BYTES * 1_000_000),
     s3: {
       endpoint: e.S3_ENDPOINT,
