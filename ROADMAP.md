@@ -476,7 +476,7 @@ Branch `phase10/sources-panel` (from `phase9/cairn-deletion`). Asked for on 2026
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | 1    | Web: the Files button becomes a database-icon "Sources" panel with Add files / Add web pages; the header's paperclip and link buttons are removed | done   |
 
-As built: the panel lists every source (delete, refresh, status as before) and, for owners and editors, has "Add files" (opens the file picker) and "Add web pages" (shows the `AddLinks` form inline). Drag-and-drop and the paperclip in the question box still work. Not checked in a browser.
+As built: the panel lists every source (delete, refresh, status as before) and, for owners and editors, has "Add files" (opens the file picker) and "Add web pages" (shows the `AddLinks` form inline). Drag-and-drop still works (the paperclip in the question box was removed on 2026-10-21). Not checked in a browser.
 
 ## Phase 11: cairn header actions
 

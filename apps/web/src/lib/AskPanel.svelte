@@ -5,13 +5,13 @@
   import ExternalLink from './ExternalLink.svelte';
 
   // Sealed: text-only answers, and no way to know which files are ready, so asking is always on.
-  // onattach: shown as a paperclip in the question box, for callers who can add files.
+  // canDrop: callers who can add files, who are told they can drop them anywhere on the page.
   let {
     cairnId,
     readySources,
     sealed = false,
-    onattach,
-  }: { cairnId: string; readySources: number; sealed?: boolean; onattach?: () => void } = $props();
+    canDrop = false,
+  }: { cairnId: string; readySources: number; sealed?: boolean; canDrop?: boolean } = $props();
 
   const canAsk = $derived(sealed || readySources > 0);
 
@@ -103,21 +103,6 @@
 <section class="ask" aria-label="Ask this cairn">
   <form onsubmit={ask}>
     <div class="ask-box">
-      {#if onattach}
-        <button
-          type="button"
-          class="icon-button attach"
-          aria-label="Attach files"
-          title="Attach files"
-          onclick={onattach}
-        >
-          <svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
-            ><path
-              d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
-            /></svg
-          >
-        </button>
-      {/if}
       <textarea
         bind:value={question}
         {onkeydown}
@@ -140,7 +125,7 @@
       {:else if sealed}
         Answers only: sources are not shown for this cairn.
       {:else}
-        Enter to ask, Shift+Enter for a new line{onattach
+        Enter to ask, Shift+Enter for a new line{canDrop
           ? '. Drop files anywhere to add them.'
           : ''}
       {/if}

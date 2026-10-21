@@ -460,7 +460,7 @@
     cairnId={data.cairn.id}
     readySources={sources.filter((s) => s.status === 'ready').length}
     {sealed}
-    onattach={canUpload && !sealed ? () => fileInput?.click() : undefined}
+    canDrop={canUpload && !sealed}
   />
 </div>
 {#if quizOpened && !sealed}

@@ -804,17 +804,9 @@ button.danger {
   resize: none;
 }
 
-.ask-box .attach {
-  background: transparent;
-  color: var(--muted);
-}
-
-.ask-box > button:not(.attach) {
-  border-radius: 12px;
-}
-
-.ask-box > button:not(.attach) {
+.ask-box > button {
   min-height: 2.75rem;
+  border-radius: 12px;
 }
 
 .ask form small {
