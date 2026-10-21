@@ -83,6 +83,7 @@ describe('POST /api/cairns/:id/quiz', () => {
         sourceId,
         filename: 'notes.txt',
         kind: 'text',
+        url: null,
         location: { offset: 0 },
         text: passage,
       },

@@ -1,9 +1,11 @@
 <script lang="ts">
   import { SourceEvent, type Source } from '@cairn/shared';
-  import { sseData } from '#lib/answer.ts';
-  import { deleteSource, uploadSource } from '#lib/api.ts';
+  import AddLinks from '#lib/AddLinks.svelte';
+  import { hostOf, sseData } from '#lib/answer.ts';
+  import { deleteSource, refreshSource, uploadSource } from '#lib/api.ts';
   import AskPanel from '#lib/AskPanel.svelte';
   import CairnDialog from '#lib/CairnDialog.svelte';
+  import ExternalLink from '#lib/ExternalLink.svelte';
   import Popover from '#lib/Popover.svelte';
   import QuizPanel from '#lib/QuizPanel.svelte';
   import { sharedBadge } from '#lib/share.ts';
@@ -36,6 +38,7 @@
   // Inline delete confirmation (no browser dialogs): the source being confirmed, and per-row errors.
   let confirming = $state<string | null>(null);
   let deleting = $state<string | null>(null);
+  let refreshing = $state<string | null>(null);
   let rowErrors = $state<Record<string, string>>({});
   let fileInput = $state<HTMLInputElement>();
   let editDialog = $state<CairnDialog>();
@@ -165,6 +168,25 @@
     }
   }
 
+  async function refresh(source: Source) {
+    refreshing = source.id;
+    delete rowErrors[source.id];
+    try {
+      upsert(await refreshSource(data.cairn.id, source.id));
+    } catch (err) {
+      rowErrors = {
+        ...rowErrors,
+        [source.id]: err instanceof Error ? err.message : 'Could not refresh the page.',
+      };
+    } finally {
+      refreshing = null;
+    }
+  }
+
+  // Ready or failed pages can be fetched again; ones in the queue already will be.
+  const canRefresh = (source: Source) =>
+    canUpload && source.url !== null && (source.status === 'ready' || source.status === 'failed');
+
   const KIND_LABEL: Record<Source['kind'], string> = {
     text: 'TXT',
     markdown: 'MD',
@@ -238,8 +260,20 @@
             <li>
               <div class="row">
                 <span class="kind">{KIND_LABEL[source.kind]}</span>
-                <span class="name" title={source.filename}>{source.filename}</span>
+                {#if source.url}
+                  <ExternalLink class="name" href={source.url} title={source.url}
+                    >{source.filename}</ExternalLink
+                  >
+                {:else}
+                  <span class="name" title={source.filename}>{source.filename}</span>
+                {/if}
                 <span class="status {source.status}">{STATUS_LABEL[source.status]}</span>
+                {#if refreshing === source.id}
+                  <span class="muted">Refreshing…</span>
+                {:else if canRefresh(source) && confirming !== source.id}
+                  <button type="button" class="link" onclick={() => refresh(source)}>Refresh</button
+                  >
+                {/if}
                 {#if !isOwner}
                   <!-- Only the owner deletes files. -->
                 {:else if deleting === source.id}
@@ -261,9 +295,9 @@
                 {/if}
               </div>
               <small class="muted"
-                >{formatSize(source.size)} · added {dateFormat.format(
-                  new Date(source.createdAt),
-                )}</small
+                >{source.url ? `${hostOf(source.url)} · ` : ''}{source.size
+                  ? `${formatSize(source.size)} · `
+                  : ''}added {dateFormat.format(new Date(source.createdAt))}</small
               >
               {#if source.status === 'failed' && source.error}<p class="error">
                   {source.error}
@@ -318,6 +352,19 @@
         }}
       />
     {/if}
+  {/if}
+
+  {#if canUpload && !sealed}
+    <Popover label="Add web pages">
+      {#snippet icon()}
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
+          ><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path
+            d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"
+          /></svg
+        >
+      {/snippet}
+      <AddLinks cairnId={data.cairn.id} onadded={upsert} />
+    </Popover>
   {/if}
 
   {#if isOwner}

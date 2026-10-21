@@ -354,16 +354,16 @@ Step 3 as built (steps 1–3 grew together in shared files, so they went in as o
 - Home page (`/`, signed in) keeps the sidebar (hiding it there was tried and dropped) and lists all cairns (owned and shared, newest first) as cards (name, two-line description, shared badge, created date), 12 per page, client-side (`paginate()` in `src/lib/paging.ts`, tested); the page number is `?page=N` in the URL. New cairn stays in the sidebar only.
 - Dark mode: `--on-accent` / `--on-error` (dark text in dark mode) replace hard-coded `#fff` on accent and error fills (white on `#5fb98a` was ~2.3:1).
 
-## Phase 7: web pages (planned)
+## Phase 7: web pages (done)
 
 Add a source by URL: Cairn fetches the page, keeps a snapshot, and indexes its main text like any other file. One URL = one source (no crawling).
 
-| Step | What                                                                                                                       | Status  | Branch                    |
-| ---- | -------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------- |
-| 1    | Safe fetcher in core: http(s) only, ports 80/443, public IPs only (checked at connect time), redirects re-checked, caps    | done    | `phase7/step1-fetch`      |
-| 2    | HTML → main text: Readability + jsdom → Markdown → `markdownSections` (heading locations); page title; kind `web`, `url`   | done    | `phase7/step2-html`       |
-| 3    | Ingest + api: `POST /api/cairns/:id/sources` with JSON `{ url }`; worker fetches, stores the snapshot, extracts; refresh   | done    | `phase7/step3-ingest-api` |
-| 4    | Web: "Add link" next to attach (one URL per line); link rows in the file list; cited passages link to the page; eval pages | planned | `phase7/step4-web-eval`   |
+| Step | What                                                                                                                       | Status | Branch                    |
+| ---- | -------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------- |
+| 1    | Safe fetcher in core: http(s) only, ports 80/443, public IPs only (checked at connect time), redirects re-checked, caps    | done   | `phase7/step1-fetch`      |
+| 2    | HTML → main text: Readability + jsdom → Markdown → `markdownSections` (heading locations); page title; kind `web`, `url`   | done   | `phase7/step2-html`       |
+| 3    | Ingest + api: `POST /api/cairns/:id/sources` with JSON `{ url }`; worker fetches, stores the snapshot, extracts; refresh   | done   | `phase7/step3-ingest-api` |
+| 4    | Web: "Add link" next to attach (one URL per line); link rows in the file list; cited passages link to the page; eval pages | done   | `phase7/step4-web-eval`   |
 
 Plan (agreed 2026-10-21):
 
@@ -405,6 +405,17 @@ Step 3 as built:
 - Checked live: Wikipedia "Cairn" (19 sections, all headings), MDN, Python tutorial, GitHub README, Node.js about, react.dev, Cloudflare blog index, gov.uk; 169.254.169.254 and localhost refused.
 - DESIGN.md Security: the worker now has outbound HTTP, only through `fetchUrl`.
 - Run `pnpm db:migrate` on the dev database (`0010`, `0011`).
+
+Step 4 as built (branched from `phase7/step3-ingest-api` before that was merged):
+
+- `CitedPassage.url` (shared; core `RetrievedChunk.url`, `QuizPassageView.url`): the answer and quiz passages carry the page's URL (null for uploads). Sealed callers get no passages, so no URLs; the URL never goes into a prompt.
+- Web `src/lib/api.ts`: `addUrl` (JSON POST; 409 → `DuplicateUrlError` carrying the existing source) and `refreshSource`.
+- `src/lib/AddLinks.svelte` in a new "Add web pages" popover (chain-link icon, after the paperclip; owners and editors): one URL per line or space-separated, up to 20, deduplicated; a bare `example.com/a` gets `https://`. Added one at a time; failures stay in the textarea with their messages; a duplicate offers "Refresh it" (or says it is being fetched). Note on public pages only, JavaScript/sign-in pages unreadable, manual refresh.
+- File list: web sources' names link to the page (`src/lib/ExternalLink.svelte`: http(s) only, `target=_blank`, `rel="noopener noreferrer"`; it holds the one `svelte/no-navigation-without-resolve` exception); the meta line shows the host, and the size only once fetched; a Refresh link (owners/editors, ready or failed pages) next to Delete.
+- Passage popups (answers and quiz): "Open page" next to Close, linking with a text fragment of the passage's first 8 words (`pageLink` in `answer.ts`: skips headings, `a | b` rows and fenced code; strips list markers and `*_\``; encodes `-` `&` `,`). Where the fragment doesn't match, the page opens at the top.
+- Eval: `corpus/ridgeback-hut.html` (hand-written club page with header/nav, `<main>` sections, a table, a code block with `#` lines, an aside and a footer), ingested from the file as kind `web` (not fetched); questions `web-winter` (paraphrase) and `web-gas` (table cell), 38 in all. Run 2026-10-21: hybrid 63% / 79% / 100% / MRR 0.74 (baseline 64 / 81 / 100 / 0.74 on 36; the image/scan chunks vary per run); web 2/2 in the top 2 (winter at 1, gas at 2).
+- Not checked in a browser (needs a Google sign-in); worth a look: the Add web pages popover, link rows with Refresh, Open page in a cited passage.
+- Known: a heading with no text before its first subheading ("Getting there" above "From Kessel village") becomes a chunk of just the heading, as with Markdown uploads.
 
 ## Phase 8: quiz (built before Phase 7)
 
@@ -511,4 +522,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 7 step 4 (web: Add link, link rows, Refresh, cited links; eval pages); later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: merge `phase7/step3-ingest-api` and `phase7/step4-web-eval`, run `pnpm db:migrate`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

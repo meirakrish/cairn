@@ -46,6 +46,7 @@ export class AnswerService {
       sourceId: c.sourceId,
       filename: c.filename,
       kind: c.kind,
+      url: c.url,
       location: c.location,
       text: c.content,
     }));

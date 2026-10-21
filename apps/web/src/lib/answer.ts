@@ -34,6 +34,44 @@ export function describeLocation(location: CitedPassage['location']): string {
 }
 
 /**
+ * A link to the cited part of a web page: the page with a text fragment (`#:~:text=`) made of the
+ * passage's first words. Headings, table rows and code are skipped, since the page shows them
+ * differently; where a browser can't match the fragment, it opens the page at the top. Anything but
+ * http(s) gets no link.
+ */
+export function pageLink(url: string, passage: string): string | undefined {
+  if (!/^https?:\/\//i.test(url)) return undefined;
+  const page = url.split('#')[0]!;
+  let fenced = false;
+  for (const raw of passage.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('```')) fenced = !fenced;
+    if (fenced || !line || line.startsWith('```') || line.startsWith('#') || line.includes(' | ')) {
+      continue;
+    }
+    const words = line
+      .replace(/^([-*>]|\d+\.)\s+/, '')
+      .replace(/[*_`]/g, '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 8)
+      .join(' ');
+    // In a fragment, - & and , have meanings of their own.
+    if (words) return `${page}#:~:text=${encodeURIComponent(words).replace(/-/g, '%2D')}`;
+  }
+  return page;
+}
+
+/** "example.com" from a URL, for showing where a page came from. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Reads Server-Sent Events from a fetch body (EventSource can't POST) and yields each `data:` payload.
  * Comment lines (`: ping`) are skipped.
  */

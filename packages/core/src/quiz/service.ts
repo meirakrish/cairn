@@ -36,6 +36,7 @@ export interface QuizPassageView {
   sourceId: string;
   filename: string;
   kind: SourceKind;
+  url: string | null;
   location: ChunkLocation;
   text: string;
 }
@@ -211,6 +212,7 @@ export class QuizService {
             sourceId: chunks.sourceId,
             filename: sources.filename,
             kind: sources.kind,
+            url: sources.url,
             location: chunks.location,
             text: chunks.content,
           },
