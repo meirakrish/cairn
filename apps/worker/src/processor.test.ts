@@ -2,8 +2,11 @@ import {
   CairnService,
   EMBEDDING_DIMENSIONS,
   IngestService,
+  type IngestJob,
   MemoryObjectStore,
   SourceService,
+  sourceRows,
+  sources as sourcesTable,
 } from '@cairn/core';
 import { createTestDbs, createUser, resetDb } from '@cairn/core/testing';
 import { fakeEmbedder } from '@meirakrish/llm-kit/testing';
@@ -46,7 +49,7 @@ async function uploaded(cairns: CairnService, text: string) {
   return { userId: user.id, sourceId: source.id };
 }
 
-const job = (data: { userId: string; sourceId: string }, attemptsMade = 0) =>
+const job = (data: IngestJob, attemptsMade = 0) =>
   ({ data, attemptsMade, opts: { attempts: 3 } }) as unknown as Job<typeof data>;
 
 describe('ingest job processor', () => {
@@ -82,5 +85,70 @@ describe('ingest job processor', () => {
     expect(failed).toMatchObject({ status: 'failed' });
     // The user sees a plain message, not the internal address.
     expect(failed?.error).not.toMatch(/172\.19|ECONNREFUSED/);
+  });
+
+  describe('table jobs', () => {
+    const csv = 'route,km\nNorth,12\nSouth,7.5';
+
+    /** A ready CSV source as ingested before table queries: chunks, but no table read yet. */
+    async function oldCsv(
+      cairns: CairnService,
+      process: ReturnType<typeof processorWith>['process'],
+    ) {
+      const user = await createUser(admin.db);
+      const cairn = await cairns.create(user.id, { name: 'C' });
+      const data = new TextEncoder().encode(csv);
+      const source = await sources.create(user.id, cairn.id, {
+        kind: 'csv',
+        filename: 'a.csv',
+        mime: 'text/csv',
+        size: data.length,
+      });
+      await storage.put(source.storageKey, data, 'text/csv');
+      await process(job({ userId: user.id, sourceId: source.id }));
+      await admin.db.delete(sourceRows);
+      await admin.db.update(sourcesTable).set({ columns: null, tableCheckedAt: null });
+      return { userId: user.id, sourceId: source.id };
+    }
+
+    it('reads the stored file for a table and leaves the source ready', async () => {
+      const { cairns, process } = processorWith();
+      const data = await oldCsv(cairns, process);
+
+      expect(await process(job({ ...data, task: 'table' }))).toEqual({ status: 'done', rows: 2 });
+
+      const source = await sources.get(data.userId, data.sourceId);
+      expect(source).toMatchObject({ status: 'ready', columns: expect.any(Array) });
+      expect(await admin.db.select().from(sourceRows)).toHaveLength(2);
+    });
+
+    it('does nothing for a source that is gone', async () => {
+      const { cairns, process } = processorWith();
+      const data = await oldCsv(cairns, process);
+      await sources.delete(data.userId, data.sourceId);
+
+      expect(await process(job({ ...data, task: 'table' }))).toEqual({
+        status: 'skipped',
+        reason: 'gone',
+      });
+    });
+
+    it('retries errors without ever failing the source', async () => {
+      const { cairns, process } = processorWith();
+      const data = await oldCsv(cairns, process);
+      const flaky = new MemoryObjectStore();
+      flaky.get = () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.1:3900'));
+      const embedder = fakeEmbedder({ dimensions: EMBEDDING_DIMENSIONS });
+      const ingest = new IngestService({
+        cairns: new CairnService(app.db, embedder.model),
+        sources,
+        storage: flaky,
+        embedder,
+      });
+      const failing = createProcessor(ingest, sources, quiet);
+
+      await expect(failing(job({ ...data, task: 'table' }, 2))).rejects.toThrow(/ECONNREFUSED/);
+      expect((await sources.get(data.userId, data.sourceId))?.status).toBe('ready');
+    });
   });
 });
