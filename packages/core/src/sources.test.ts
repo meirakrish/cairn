@@ -1,8 +1,9 @@
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from './cairns';
-import { cairns, chunks, EMBEDDING_DIMENSIONS, sources, withUser } from './db';
+import { cairns, chunks, EMBEDDING_DIMENSIONS, sourceRows, sources, withUser } from './db';
 import { NotFoundError } from './errors';
+import type { ParsedTable } from './ingest';
 import { SourceService, type ChunkInput } from './sources';
 import { createTestDbs, createUser, resetDb } from './testing';
 
@@ -95,6 +96,30 @@ describe('SourceService', () => {
     await service.complete(user.id, source.id, [chunk('new')]);
 
     expect((await service.listChunks(user.id, source.id)).map((c) => c.content)).toEqual(['new']);
+  });
+
+  it('replaces table rows and columns when a source is processed again, and clears them without a table', async () => {
+    const { user, cairn } = await ownerWithCairn();
+    const source = await service.create(user.id, cairn.id, file);
+    const table = (km: number): ParsedTable => ({
+      columns: [{ name: 'km', type: 'number' }],
+      rows: [{ row: 2, data: { km } }],
+    });
+    const stored = () =>
+      withUser(app.db, user.id, async (tx) => ({
+        rows: (await tx.select().from(sourceRows)).map((r) => r.data),
+        columns: (await service.get(user.id, source.id))?.columns,
+      }));
+
+    await service.complete(user.id, source.id, [chunk('a')], table(1));
+    await service.complete(user.id, source.id, [chunk('a')], table(2));
+    expect(await stored()).toEqual({
+      rows: [{ km: 2 }],
+      columns: [{ name: 'km', type: 'number' }],
+    });
+
+    await service.complete(user.id, source.id, [chunk('a')]);
+    expect(await stored()).toEqual({ rows: [], columns: null });
   });
 
   it('claims pending and failed sources for processing, but not ready ones', async () => {

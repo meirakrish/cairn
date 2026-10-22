@@ -164,6 +164,8 @@ export const CitedPassage = z.object({
   /** The page a web source was fetched from; null for uploads. */
   url: z.string().nullable(),
   location: ChunkLocation,
+  /** For a table query's result: what was run, in words, and how many rows it kept. */
+  query: z.object({ description: z.string(), matched: z.number().int() }).optional(),
   text: z.string(),
 });
 export type CitedPassage = z.infer<typeof CitedPassage>;

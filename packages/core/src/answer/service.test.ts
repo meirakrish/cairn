@@ -5,8 +5,10 @@ import { CairnService } from '../cairns';
 import { EMBEDDING_DIMENSIONS, queryLog } from '../db';
 import { ForbiddenError, NotFoundError } from '../errors';
 import { RetrievalService } from '../retrieval';
+import { csvTable } from '../ingest';
 import { ShareService } from '../shares';
 import { SourceService } from '../sources';
+import { TableQueryService, TableService } from '../table';
 import { createTestDbs, createUser, resetDb } from '../testing';
 import { SEALED_SYSTEM_PROMPT } from './prompt';
 import { AnswerService, NOTHING_FOUND } from './service';
@@ -222,5 +224,97 @@ describe('AnswerService.answerSealed', () => {
     await expect(collect(answers.answerSealed(stranger.id, cairn.id, 'q'))).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+});
+
+describe('AnswerService with table queries', () => {
+  const total = {
+    approach: 'table',
+    table: 1,
+    plan: {
+      filters: [{ column: 'Region', op: 'eq', value: 'west' }],
+      aggregates: [{ fn: 'sum', column: 'Amount' }],
+    },
+  };
+
+  async function cairnWithTable() {
+    const { user, cairn } = await cairnWith(['Cairns mark trails.']);
+    const csv = 'Region,Amount\nWest,100\nWest,40.5\nEast,250';
+    const table = await sources.create(user.id, cairn.id, {
+      kind: 'csv',
+      filename: 'sales.csv',
+      mime: 'text/csv',
+      size: csv.length,
+    });
+    await sources.complete(user.id, table.id, [], csvTable(csv));
+    return { user, cairn, table };
+  }
+
+  const serviceFor = (llm: ReturnType<typeof scriptedLlm>) =>
+    new AnswerService(
+      app.db,
+      retrieval,
+      llm,
+      new TableQueryService(app.db, new TableService(app.db), llm),
+    );
+
+  it('answers from the query result, cited as the one passage, without searching', async () => {
+    const { user, cairn, table } = await cairnWithTable();
+    const llm = scriptedLlm({ structured: [total], stream: [['West sold 140.5 [1].']] });
+
+    const events = await collect(
+      serviceFor(llm).answer(user.id, cairn.id, 'How much did West sell?'),
+    );
+
+    const list = (events[0] as Extract<AnswerEvent, { type: 'passages' }>).passages;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ n: 1, sourceId: table.id, filename: 'sales.csv', kind: 'csv' });
+    expect(list[0]!.query).toEqual({
+      description: 'rows where Region = "west"; sum(Amount)',
+      matched: 2,
+    });
+    expect(list[0]!.text).toContain('rows where Region = "west"; sum(Amount)');
+    expect(list[0]!.text).toContain('sum(Amount)\n140.5');
+    expect(events.at(-1)).toMatchObject({ type: 'done', cited: [1] });
+    expect(String(llm.calls[1]!.messages[1]!.content)).toContain('140.5');
+    const [logged] = await admin.db.select().from(queryLog);
+    expect(logged).toMatchObject({ chunkCount: 1 });
+  });
+
+  it('answers from passages when the model chooses them', async () => {
+    const { user, cairn } = await cairnWithTable();
+    const llm = scriptedLlm({
+      structured: [{ approach: 'passages' }],
+      stream: [['Cairns mark trails [1].']],
+    });
+
+    const events = await collect(serviceFor(llm).answer(user.id, cairn.id, 'What do cairns do?'));
+
+    const list = (events[0] as Extract<AnswerEvent, { type: 'passages' }>).passages;
+    expect(list.map((p) => p.filename)).toContain('trail.pdf');
+    expect(list.every((p) => p.query === undefined)).toBe(true);
+  });
+
+  it('serves sealed callers the same answer as text only, in their own words', async () => {
+    const { user, cairn } = await cairnWithTable();
+    const llm = scriptedLlm({ structured: [total], stream: [['West sold 140.5 in total.']] });
+
+    const events = await collect(
+      serviceFor(llm).answerSealed(user.id, cairn.id, 'How much did West sell?'),
+    );
+
+    expect(events.map((e) => e.type)).toEqual(['delta', 'done']);
+    const prompt = llm.calls[1]!.messages.map((m) => String(m.content)).join('\n');
+    expect(prompt).toContain('140.5');
+    expect(prompt).not.toContain('sales.csv');
+  });
+
+  it('does not call the router for cairns without tables', async () => {
+    const { user, cairn } = await cairnWith(['Cairns mark trails.']);
+    const llm = scriptedLlm({ stream: [['Cairns mark trails [1].']] });
+
+    await collect(serviceFor(llm).answer(user.id, cairn.id, 'What do cairns do?'));
+
+    expect(llm.calls.map((c) => c.kind)).toEqual(['stream']);
   });
 });

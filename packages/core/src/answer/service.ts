@@ -2,8 +2,9 @@ import type { AnswerEvent, CitedPassage, SealedAnswerEvent } from '@cairn/shared
 import type { LlmClient } from '@meirakrish/llm-kit';
 import { queryLog, withUser, type Db } from '../db';
 import { ForbiddenError, NotFoundError } from '../errors';
-import type { RetrievalService } from '../retrieval';
+import type { RetrievalService, RetrievedChunk } from '../retrieval';
 import { cairnAccess, type CairnAccess } from '../shares';
+import type { TableAttempt, TableQueryService } from '../table';
 import { buildMessages, citedNumbers } from './prompt';
 import { VerbatimFilter } from './verbatim';
 
@@ -18,6 +19,10 @@ export const NOTHING_FOUND = "I couldn't find anything about that in this cairn'
  * (RLS): a cairn they can't see is a NotFoundError. Logs the question to query_log, with the share
  * it came through, when the answer completes.
  *
+ * With a TableQueryService, a question about numbers in a CSV or JSON table (a count, a total, a
+ * ranking) is answered from a query over all its rows, which stands in for the passages; every other
+ * question is answered from retrieved passages.
+ *
  * Two entry points with different event types, so a sealed caller's stream has nowhere to carry
  * sources: answer() (passages, citations) refuses sealed callers; answerSealed() serves anyone.
  */
@@ -26,6 +31,7 @@ export class AnswerService {
     private db: Db,
     private retrieval: RetrievalService,
     private llm: LlmClient,
+    private tables?: TableQueryService,
   ) {}
 
   /** Cited answer: the passages, the text, then which passages it cited. */
@@ -40,7 +46,7 @@ export class AnswerService {
     if (access.visibility === 'sealed') {
       throw new ForbiddenError('sources are not shown for this cairn');
     }
-    const chunks = await this.retrieval.search(userId, cairnId, question, { signal: opts.signal });
+    const { chunks, table } = await this.gather(userId, cairnId, question, opts);
     const passages: CitedPassage[] = chunks.map((c, i) => ({
       n: i + 1,
       sourceId: c.sourceId,
@@ -48,6 +54,7 @@ export class AnswerService {
       kind: c.kind,
       url: c.url,
       location: c.location,
+      ...(table && { query: { description: table.description, matched: table.result.matched } }),
       text: c.content,
     }));
     yield { type: 'passages', passages };
@@ -82,7 +89,7 @@ export class AnswerService {
   ): AsyncGenerator<SealedAnswerEvent> {
     const started = Date.now();
     const access = await this.access(userId, cairnId);
-    const chunks = await this.retrieval.search(userId, cairnId, question, { signal: opts.signal });
+    const { chunks } = await this.gather(userId, cairnId, question, opts);
 
     if (chunks.length === 0) {
       yield { type: 'delta', text: NOTHING_FOUND };
@@ -100,6 +107,20 @@ export class AnswerService {
 
     const latencyMs = await this.log(userId, cairnId, access, question, chunks.length, started);
     yield { type: 'done', latencyMs };
+  }
+
+  /** What the answer is written from: a table query's result, else the best passages. */
+  private async gather(
+    userId: string,
+    cairnId: string,
+    question: string,
+    opts: AnswerOptions,
+  ): Promise<{ chunks: RetrievedChunk[]; table?: TableAttempt }> {
+    const table = await this.tables?.attempt(userId, cairnId, question, { signal: opts.signal });
+    if (table) return { chunks: [tableChunk(table)], table };
+    return {
+      chunks: await this.retrieval.search(userId, cairnId, question, { signal: opts.signal }),
+    };
   }
 
   private async access(userId: string, cairnId: string): Promise<CairnAccess> {
@@ -129,4 +150,21 @@ export class AnswerService {
     );
     return latencyMs;
   }
+}
+
+/** A table query's result as the one passage the answer cites. */
+function tableChunk({ source, text }: TableAttempt): RetrievedChunk {
+  return {
+    id: source.id,
+    sourceId: source.id,
+    filename: source.filename,
+    kind: source.kind,
+    url: source.url,
+    ordinal: 0,
+    content: text,
+    location: {},
+    score: 1,
+    vectorRank: null,
+    keywordRank: null,
+  };
 }

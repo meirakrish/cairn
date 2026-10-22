@@ -33,6 +33,11 @@ export function describeLocation(location: CitedPassage['location']): string {
   return '';
 }
 
+/** What a table query did, for a source line: "rows where Region = "West"; sum(Amount) · 3 rows matched". */
+export function describeQuery(query: NonNullable<CitedPassage['query']>): string {
+  return `${query.description} · ${query.matched} ${query.matched === 1 ? 'row' : 'rows'} matched`;
+}
+
 /**
  * A link to the cited part of a web page: the page with a text fragment (`#:~:text=`) made of the
  * passage's first words. Headings, table rows and code are skipped, since the page shows them

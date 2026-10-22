@@ -546,6 +546,61 @@ As built:
 - PDFs (step 4): pdf.js reverses the letters inside each text item (so visual-order PDFs from older tools come out right), but items come left to right on the page, so a Hebrew line with English or numbers read its runs backwards, brackets came out swapped, and Chrome's pointed text (a glyph per item) was garbage. `pageText(items, pageWidth)` keeps left-to-right lines exactly as before (items joined, `\n` per `hasEOL`) and passes right-to-left lines to `rtlLine`: items sorted by x and read right to left; a Latin run (with numbers after it and punctuation between) stays left to right; leading/trailing punctuation of a Latin or number run moves to its reading side; lone brackets are mirrored; mark-only items attach to the Hebrew item whose middle is nearest; a gap > 0.3 × font size without a space becomes a space (table cells); whitespace items < 0.5pt wide are dropped (pdf.js filler). Line direction: both ends Hebrew → RTL, both ends Latin → LTR; mixed ends → the side with the smaller margin (> 5% of the page width apart), else the page's majority. The `hasEOL` item is empty and sits where the _next_ line starts, so empty items are skipped. Tested on two PDFs Chrome printed from Hebrew HTML (items copied into `pdf-text.test.ts`, files not committed) and on a visual-order PDF from `makePdf`'s new `RunsPage` (glyph-name font, `afii57664`–`afii57690`). Known gap: a list number loses its space ("1.הפריט"), and Word-made PDFs weren't tried (Word isn't installed here).
 - Not done: Hebrew stopwords (מה, של, את…); vector search and the D weight cover most of it. Not yet checked in a browser or with a Hebrew eval set. Dev DB needs `pnpm db:migrate` for 0013 (rewrites every chunk's `tsv`).
 
+## Phase 14: table queries over CSV/JSON (planned)
+
+Branch `phase14/table-queries` (from `main`). Asked for on 2026-10-21. Today a CSV/JSON row is only a line in a chunk, so "how many", "average", "top 5" questions see just the few chunks retrieval returns. This phase keeps the rows and answers such questions from all of them.
+
+Design: the model never writes SQL. It writes a small JSON **query plan** (filters, group by, aggregates, order, limit) that core validates against the file's columns and compiles to parameterized SQL. Safe by construction; no sandbox needed.
+
+| Step | What                                                                                                                                                                      | Status  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1    | Storage: `source_rows` (cairn_id, source_id, row, data jsonb; RLS like chunks) + `sources.columns` (name, type: number / date / text, inferred at ingest); migration 0014 | done    |
+| 2    | Ingest: CSV and JSON/JSONL (flat records) also write rows and column types; chunks stay (lookups, keyword search); nested JSON keeps only its chunks                      | done    |
+| 3    | core `TablePlan` (zod) + `runPlan`: validate columns and types, compile to SQL (where, group by, count/sum/avg/min/max, order, limit ≤ 100), statement timeout, row cap    | done    |
+| 4    | core `TableQueryService`: router prompt (question + cairn's table schemas → plan or "passages"), run, then answer from the result; fall back to passages on a bad plan     | done    |
+| 5    | api/web: answer shows the plan in words ("12 rows where Region = West, sum of Amount") as the citation, with the matching row range; sealed callers get text only          | done    |
+| 6    | Eval: table questions (count, sum, group, top-N, filter + lookup) with a CSV corpus; live check with qwen3.5:9b                                                            | done    |
+
+Step 1 as built: migration 0014. `source_rows` has the same shape and RLS as `chunks` (composite FK to `sources(id, cairn_id)`, readable where the cairn is, writable by owners and editors, deleted with the source), unique on `(source_id, row)`; `row` is the same number the chunk locations use. `sources.columns` is `TableColumn[]` (`{ name, type }`, type `number` | `date` | `text`), null for non-tables. Nothing writes either yet (step 2); `src/db/source-rows-rls.test.ts` covers the policies. Dev DB is migrated.
+
+Step 2 as built: `ingest/table.ts` (`csvTable`, `jsonTable`, `readTable`) builds a `ParsedTable` from the same file the chunks come from; `IngestService` passes it to `SourceService.complete(..., table)`, which replaces `source_rows` and sets `sources.columns` (null when the file has no table) in the chunk transaction.
+
+- Types: a column is `number` when every non-empty value is a plain number (`-?(0|[1-9]\d*)(\.\d+)?`, safe integers: "007", "1,234", "1e3" and ids past 2^53 stay text), `date` when every value is a valid ISO date or date-time, else `text`. One bad value makes the column text; values are then kept as written. Dates are stored as the strings given. Empty cells are absent from `data`.
+- CSV: any file with a header and a data row; extra fields get `column N`. JSON: only an array of flat objects (or JSONL of them), at least 2 records; columns are the keys in order of first appearance, `row` is the array index (JSONL: line number). A wrapper like `{"orders": [...]}` and nested values stay chunks-only (could be added later).
+- Limits: over 200,000 rows or 200 columns, the file keeps its chunks but no table (`TABLE_LIMITS`).
+- A ready source can't be requeued, so "processed again" happens only for web refreshes and retries after failure; `complete` handles both by replacing.
+
+Step 3 as built (`core/src/table/`): `TablePlan` (zod, strict: unknown keys are refused) = `filters` (and; ops eq ne gt gte lt lte in contains is_empty not_empty), `groupBy` (≤ 3), `aggregates` (count, count_distinct, sum, avg, min, max; ≤ 5), `select` (listing columns), `orderBy` (≤ 3), `limit` (1–100, default 20). `compilePlan` checks it against `sources.columns` and builds the SQL; `TableService.run(userId, sourceId, plan)` runs it as the user (RLS) and returns `{ columns, rows, rowNumbers?, matched, truncated }`.
+
+- Safe by construction: the SQL is built from fixed pieces; column names and values are always bound parameters (`data ->> $1::text`); `group by` / `order by` use output positions that we compute. Each run sets `statement_timeout` (5 s) and UTC for the transaction. Everything reads `source_rows` of the one source.
+- Modes: with `aggregates` or `groupBy` → one row per group (a groupBy alone counts; no groupBy = one row for all); with neither → a listing of rows with their row numbers, in file order unless `orderBy`. Grouped results default to biggest first by the first aggregate, then by group.
+- Types decide what is allowed: sum/avg only on numbers; min/max on numbers, dates (shown as `2024-03-15T10:30:00Z`) and text; gt/lt etc. on numbers and dates; `contains` (case-insensitive, `%` and `_` literal) only on text. Text `eq`/`in` ignore case; `ne` counts empty values as different. Grouping is by the value as written ("West" ≠ "west"). Dates compare as timestamps, so date-only and date-time values mix.
+- `PlanError` messages say what is wrong and name the real columns, so step 4 can send them back to the model. Column names match ignoring case and surrounding space.
+- Not tested: the 5 s timeout itself (no cheap slow query on 200k rows); the limits on rows and columns are checked at ingest.
+
+Step 4 as built (`core/src/table/query.ts`, `prompt.ts`): `TableQueryService.attempt(userId, cairnId, question)` lists the cairn's ready table sources (newest 5; none → returns at once, **no model call**), shows the model each with its columns and types, row count and 3 example rows, and asks for a `Route` (`{ approach: 'table' | 'passages', table?, plan? }`) with one `structured` call (name `table_route`, string lengths bounded for Ollama). A plan that `PlanError`s is sent back once with the reason (`PLAN_ATTEMPTS` = 2); after that, or for `passages`, a missing table or a vanished file, it returns undefined. Other errors propagate. A success is a `TableAttempt` { source, plan, description (the plan in words, no model), result, text }.
+
+- `AnswerService` takes an optional 4th argument `tables`. With a result, the answer is written from it alone: it becomes the one passage (`filename` and `kind` of the table, empty location), so it is cited as [1], and retrieval is skipped. Otherwise nothing changes. Sealed callers get the same through `answerSealed`: the result text names no file (so a sealed prompt carries no filename), and the verbatim filter still runs.
+- Not yet tried with a real model (step 6).
+- Router prompt text lives in `ROUTER_PROMPT`; the file's text is escaped so a cell can't close `<tables>`.
+
+Step 5 as built: `apps/api` builds `AnswerService` with `TableQueryService(db, TableService(db), llm)`, so it is on for every cairn that has a table (the only api change). `CitedPassage` (shared) got an optional `query: { description, matched }`, set by `answer()` when the passage is a table result. Web: the open passage's header reads "Query over all rows: rows where Region = "West"; sum(Amount) · 3 rows matched", and the Sources list says "table query" instead of a location; the result itself shows as the passage text (`row | col | col` lines). Sealed callers still get text only. No row range is shown: matching rows of a listing are not contiguous, so they are listed by number in the text instead.
+
+Step 6 as built: `packages/eval` has a table eval, `pnpm eval:tables` (`src/tables.ts`, questions in `src/table-questions.ts`, needs Postgres and Ollama; no embeddings). It ingests `corpus/trails.csv` (120 rows) and a new `corpus/orders.jsonl` (60 flat records), asks 22 questions (19 for tables, 3 for passages) with the real chat model, and grades each three ways: **route** (right table, or passages), **result** (the query's values equal what the table's own rows give, computed in the eval), **answer** (the final text states them). Output goes to `results/tables-latest.json`, with what the router answered for each question.
+
+Live check with qwen3.5:9b (last run): route 22/22, result 14/18, answer 17/19. Every plan that asked for the right thing returned the right values; the misses are plans that asked for something else:
+- It adds a `groupBy` the question didn't ask for (the average length of the moderate trails, grouped by region), and sometimes a filter copied from the example rows (`status = "shipped"`).
+- It answers "which trail is longest" with `max` grouped by region, which has no trail name; a lookup came back as `count_distinct(trail_id)`.
+- Run to run, the same question can flip, since each prompt change moves other questions (temperature 0 only fixes one prompt).
+
+What the eval changed in core: grouped plans ignore a `select` (the model copied the result's labels into it, and a refusal didn't make it stop: it repeated the plan); `select` with only min/max aggregates and an `orderBy` is read as a listing ("the trail with the most cairns"); `orderBy: "cairns"` finds `max(cairns)` when that is the only aggregate of the column; the router prompt got worked examples (generic column names, not the eval's), "groupBy only for each/per/ranking", "filter only on stated conditions", "set limit high when listing". Before these, 16/22 routes (6 questions fell back to passages after two refused plans).
+
+Open questions:
+
+- Router: decided — runs only for cairns that have a table source, so other cairns get no extra latency.
+- Decided: v1 queries one file at a time (no joins across files) and flat JSON only (no nested records). Dates in mixed formats are also out of scope.
+- Sealed callers: aggregates are not "copying" a source, but the VerbatimFilter must still run over the result rows.
+
 ## Current layout
 
 ```
@@ -614,4 +669,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 13 (Hebrew) is on `phase13/hebrew`; check RTL in a browser with Hebrew files and questions; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage"); table queries over CSV/JSON (query plan → SQL) were discussed and parked.** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 14 (table queries) is planned on `phase14/table-queries`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

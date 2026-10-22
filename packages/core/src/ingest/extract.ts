@@ -66,7 +66,7 @@ export async function extract(
   return segments.filter((s) => s.text.trim() !== '');
 }
 
-function decodeText(data: Uint8Array): string {
+export function decodeText(data: Uint8Array): string {
   // The api only accepts valid UTF-8; drop a BOM and normalise line endings.
   return new TextDecoder('utf-8').decode(data).replace(/\r\n?/g, '\n');
 }

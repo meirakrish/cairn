@@ -13,6 +13,7 @@ import { PermanentIngestError } from './errors';
 import { extract, type Segment } from './extract';
 import { readHtml } from './html';
 import { describeImage, transcribePage } from './image';
+import { readTable } from './table';
 
 export interface IngestDeps {
   cairns: CairnService;
@@ -101,6 +102,7 @@ export class IngestService {
         userId,
         sourceId,
         chunks.map((c, i) => ({ ...c, embedding: vectors[i]! })),
+        readTable(kind, data),
       );
     } catch (err) {
       // Deleted while we worked: nothing left to store into.

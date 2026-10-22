@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
   cairns,
   chunks,
+  sourceRows,
   sources,
   withUser,
   type ChunkLocation,
@@ -12,6 +13,7 @@ import {
 } from './db';
 import { NotFoundError } from './errors';
 import type { SourceChange, SourceChangeListener } from './events';
+import type { ParsedTable } from './ingest/table';
 
 export interface CreateSourceInput {
   kind: SourceKind;
@@ -38,6 +40,7 @@ export interface ChunkInput {
 
 const MAX_ERROR_LENGTH = 500;
 const INSERT_BATCH = 200;
+const ROW_BATCH = 1000;
 
 export function storageKey(cairnId: string, sourceId: string): string {
   return `cairns/${cairnId}/sources/${sourceId}`;
@@ -186,8 +189,16 @@ export class SourceService {
     return this.changed(source);
   }
 
-  /** Replaces the source's chunks and marks it ready, in one transaction. */
-  async complete(userId: string, sourceId: string, input: ChunkInput[]): Promise<Source> {
+  /**
+   * Replaces the source's chunks (and its table rows and columns, if it is a table) and marks it
+   * ready, in one transaction.
+   */
+  async complete(
+    userId: string,
+    sourceId: string,
+    input: ChunkInput[],
+    table?: ParsedTable,
+  ): Promise<Source> {
     const ready = await withUser(this.db, userId, async (tx) => {
       const [source] = await tx.select().from(sources).where(eq(sources.id, sourceId));
       if (!source) throw new NotFoundError('source');
@@ -203,9 +214,23 @@ export class SourceService {
           })),
         );
       }
+      await tx.delete(sourceRows).where(eq(sourceRows.sourceId, sourceId));
+      const rows = table?.rows ?? [];
+      for (let i = 0; i < rows.length; i += ROW_BATCH) {
+        await tx
+          .insert(sourceRows)
+          .values(
+            rows.slice(i, i + ROW_BATCH).map((r) => ({ cairnId: source.cairnId, sourceId, ...r })),
+          );
+      }
       const [ready] = await tx
         .update(sources)
-        .set({ status: 'ready', error: null, updatedAt: sql`now()` })
+        .set({
+          status: 'ready',
+          error: null,
+          columns: table?.columns ?? null,
+          updatedAt: sql`now()`,
+        })
         .where(eq(sources.id, sourceId))
         .returning();
       return ready!;

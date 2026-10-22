@@ -115,6 +115,8 @@ export const sources = pgTable(
     size: integer('size').notNull(),
     status: text('status', { enum: SOURCE_STATUSES }).notNull().default('pending'),
     error: text('error'),
+    // Tables (CSV, flat JSON): the columns of source_rows.data, in file order. Null for other sources.
+    columns: jsonb('columns').$type<TableColumn[]>(),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -164,6 +166,31 @@ export const chunks = pgTable(
     index('chunks_tsv_idx').using('gin', t.tsv),
     // Reprocessing a source replaces its chunks, so editors delete chunks too.
     ...readEditDelete('chunks', t.cairnId, cairnEditable),
+  ],
+);
+
+// One row of a table source (CSV, flat JSON/JSONL), kept whole for table queries. `row` is the
+// location the chunks use (spreadsheet row, JSONL line, record index); `data` maps column name to
+// value, typed per sources.columns (numbers as JSON numbers, dates as ISO strings, empty as absent).
+export const sourceRows = pgTable(
+  'source_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cairnId: uuid('cairn_id').notNull(),
+    sourceId: uuid('source_id').notNull(),
+    row: integer('row').notNull(),
+    data: jsonb('data').$type<Record<string, string | number>>().notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'source_rows_source_fk',
+      columns: [t.sourceId, t.cairnId],
+      foreignColumns: [sources.id, sources.cairnId],
+    }).onDelete('cascade'),
+    unique('source_rows_source_row_key').on(t.sourceId, t.row),
+    index('source_rows_cairn_id_idx').on(t.cairnId),
+    // Reprocessing a source replaces its rows, so editors delete them too.
+    ...readEditDelete('source_rows', t.cairnId, cairnEditable),
   ],
 );
 
@@ -356,6 +383,15 @@ export const quizAttempts = pgTable(
   ],
 );
 
+export const COLUMN_TYPES = ['number', 'date', 'text'] as const;
+export type ColumnType = (typeof COLUMN_TYPES)[number];
+
+/** A column of a table source; the type is inferred at ingest from all of its values. */
+export interface TableColumn {
+  name: string;
+  type: ColumnType;
+}
+
 export interface ChunkLocation {
   /** 1-based PDF page. */
   page?: number;
@@ -378,6 +414,8 @@ export type NewCairn = typeof cairns.$inferInsert;
 export type Source = typeof sources.$inferSelect;
 export type NewSource = typeof sources.$inferInsert;
 export type Chunk = typeof chunks.$inferSelect;
+export type SourceRow = typeof sourceRows.$inferSelect;
+export type NewSourceRow = typeof sourceRows.$inferInsert;
 export type Share = typeof shares.$inferSelect;
 export type NewShare = typeof shares.$inferInsert;
 export type QueryLogEntry = typeof queryLog.$inferSelect;

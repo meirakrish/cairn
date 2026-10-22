@@ -10,6 +10,8 @@ import {
   redisSourcePublisher,
   ShareService,
   SourceService,
+  TableQueryService,
+  TableService,
   type Db,
   type IngestQueue,
   type Moderator,
@@ -74,7 +76,12 @@ export function createApp({
   app.use('/api/auth', authRouter({ config, db, redis, sessions }));
   const cairns = new CairnService(db, config.embedModel);
   const sources = new SourceService(db, { onChange: redisSourcePublisher(redis) });
-  const answers = new AnswerService(db, new RetrievalService(db, embedder), llm);
+  const answers = new AnswerService(
+    db,
+    new RetrievalService(db, embedder),
+    llm,
+    new TableQueryService(db, new TableService(db), llm),
+  );
   // A lease outlives three missed heartbeats, then stops counting.
   const limiter = new StreamLimiter(redis, {
     limit: config.sseMaxStreamsPerUser,

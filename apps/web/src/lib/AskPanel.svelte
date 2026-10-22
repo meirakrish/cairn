@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CitedPassage } from '@cairn/shared';
-  import { describeLocation, pageLink, splitCitations } from './answer';
+  import { describeLocation, describeQuery, pageLink, splitCitations } from './answer';
   import { askQuestion } from './api';
   import ExternalLink from './ExternalLink.svelte';
 
@@ -162,6 +162,11 @@
             {#if describeLocation(openPassage.location)}
               <span class="muted">· {describeLocation(openPassage.location)}</span>
             {/if}
+            {#if openPassage.query}
+              <span class="muted" dir="auto"
+                >· Query over all rows: {describeQuery(openPassage.query)}</span
+              >
+            {/if}
             {#if openPassage.url}
               {@const link = pageLink(openPassage.url, openPassage.text)}
               {#if link}<ExternalLink href={link} title={openPassage.url}>Open page</ExternalLink
@@ -189,9 +194,11 @@
             {#each citedPassages as passage (passage.n)}
               <li>
                 <button type="button" class="link" onclick={() => toggle(passage.n)}>
-                  [{passage.n}] <bdi>{passage.filename}</bdi>{describeLocation(passage.location)
-                    ? ` · ${describeLocation(passage.location)}`
-                    : ''}
+                  [{passage.n}] <bdi>{passage.filename}</bdi>{passage.query
+                    ? ' · table query'
+                    : describeLocation(passage.location)
+                      ? ` · ${describeLocation(passage.location)}`
+                      : ''}
                 </button>
               </li>
             {/each}

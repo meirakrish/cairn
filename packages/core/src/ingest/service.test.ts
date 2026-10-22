@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import { ContextOverflowError, type LlmClient } from '@meirakrish/llm-kit';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from '../cairns';
-import { EMBEDDING_DIMENSIONS, type SourceKind } from '../db';
+import { EMBEDDING_DIMENSIONS, sourceRows, withUser, type SourceKind } from '../db';
 import { SourceService } from '../sources';
 import { LlmModerator } from '../moderation';
 import { MemoryObjectStore } from '../storage';
@@ -110,6 +110,38 @@ describe('IngestService', () => {
     expect(chunks[0]!.location.rows![0]).toBe(2);
     expect(chunks.at(-1)!.location.rows![1]).toBe(61);
     for (const c of chunks) expect(c.content.length).toBeLessThanOrEqual(200);
+  });
+
+  it('stores the rows and column types of a CSV', async () => {
+    const { cairns, ingest } = setup();
+    const { user, source } = await uploaded(cairns, 'csv', utf8('route,km\nNorth,12\nSouth,7.5'));
+
+    await ingest.process(user.id, source.id);
+    const stored = await sources.get(user.id, source.id);
+    expect(stored?.columns).toEqual([
+      { name: 'route', type: 'text' },
+      { name: 'km', type: 'number' },
+    ]);
+    const rows = () =>
+      withUser(app.db, user.id, (tx) => tx.select().from(sourceRows).orderBy(sourceRows.row));
+    expect((await rows()).map((r) => [r.row, r.data])).toEqual([
+      [2, { route: 'North', km: 12 }],
+      [3, { route: 'South', km: 7.5 }],
+    ]);
+  });
+
+  it('keeps no rows for text, nested JSON or a CSV with only a header', async () => {
+    const { cairns, ingest } = setup();
+    for (const [kind, text] of [
+      ['text', 'hello'],
+      ['json', '{"a":{"b":1}}'],
+      ['csv', 'a,b\n'],
+    ] as const) {
+      const { user, source } = await uploaded(cairns, kind, utf8(text));
+      await ingest.process(user.id, source.id).catch(() => undefined);
+      expect((await sources.get(user.id, source.id))?.columns).toBeNull();
+    }
+    expect(await admin.db.select().from(sourceRows)).toEqual([]);
   });
 
   it('stores a web page as heading sections, decoded with its charset', async () => {
