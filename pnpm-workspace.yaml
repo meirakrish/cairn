@@ -6,9 +6,3 @@ allowBuilds:
   esbuild: true
   # Optional native speed-up for bullmq's msgpackr; prebuilt binaries cover it, no install script needed.
   msgpackr-extract: false
-
-# Only for our own llm-kit, published by its CI with provenance minutes before a step needed it.
-# Remove the entry once that version is a day old (0.3.0: after
-# 2026-10-21 ~21:00 UTC). Never add third-party packages here.
-minimumReleaseAgeExclude:
-  - '@meirakrish/llm-kit@0.3.0'
