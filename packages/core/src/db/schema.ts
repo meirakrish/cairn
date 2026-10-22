@@ -117,6 +117,9 @@ export const sources = pgTable(
     error: text('error'),
     // Tables (CSV, flat JSON): the columns of source_rows.data, in file order. Null for other sources.
     columns: jsonb('columns').$type<TableColumn[]>(),
+    // When the file was last read for a table (found or not); null = not yet, e.g. ingested before
+    // table queries existed (migration 0015), so the backfill still has to look.
+    tableCheckedAt: timestamp('table_checked_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from './cairns';
@@ -120,6 +121,76 @@ describe('SourceService', () => {
 
     await service.complete(user.id, source.id, [chunk('a')]);
     expect(await stored()).toEqual({ rows: [], columns: null });
+  });
+
+  it('marks a source as read for a table when it completes, whether it has one or not', async () => {
+    const { user, cairn } = await ownerWithCairn();
+    const source = await service.create(user.id, cairn.id, file);
+    expect(source.tableCheckedAt).toBeNull();
+
+    const plain = await service.complete(user.id, source.id, [chunk('a')]);
+    expect(plain.columns).toBeNull();
+    expect(plain.tableCheckedAt).toBeInstanceOf(Date);
+  });
+
+  describe('setTable', () => {
+    const table: ParsedTable = {
+      columns: [{ name: 'km', type: 'number' }],
+      rows: [{ row: 2, data: { km: 3 } }],
+    };
+    const state = (userId: string, sourceId: string) =>
+      withUser(app.db, userId, async (tx) => ({
+        rows: (await tx.select().from(sourceRows)).map((r) => r.data),
+        chunks: (await tx.select().from(chunks)).length,
+        source: (await tx.select().from(sources).where(eq(sources.id, sourceId)))[0]!,
+      }));
+
+    it('adds rows and columns to a ready source and leaves its chunks, status and events alone', async () => {
+      const changes: string[] = [];
+      const watched = new SourceService(app.db, { onChange: (c) => void changes.push(c.kind) });
+      const { user, cairn } = await ownerWithCairn();
+      const source = await watched.create(user.id, cairn.id, file);
+      const ready = await watched.complete(user.id, source.id, [chunk('a')]);
+      await admin.db.update(sources).set({ tableCheckedAt: null });
+      changes.length = 0;
+
+      expect(await watched.setTable(user.id, source.id, table)).toBe(true);
+
+      const after = await state(user.id, source.id);
+      expect(after.rows).toEqual([{ km: 3 }]);
+      expect(after.chunks).toBe(1);
+      expect(after.source).toMatchObject({
+        status: 'ready',
+        columns: table.columns,
+        updatedAt: ready.updatedAt,
+      });
+      expect(after.source.tableCheckedAt).toBeInstanceOf(Date);
+      expect(changes).toEqual([]);
+    });
+
+    it('records that a file has no table, and replaces rows it had', async () => {
+      const { user, cairn } = await ownerWithCairn();
+      const source = await service.create(user.id, cairn.id, file);
+      await service.complete(user.id, source.id, [chunk('a')], table);
+
+      expect(await service.setTable(user.id, source.id)).toBe(true);
+
+      const after = await state(user.id, source.id);
+      expect(after.rows).toEqual([]);
+      expect(after.source.columns).toBeNull();
+    });
+
+    it('does nothing for sources that are not ready, are gone, or are not the caller’s', async () => {
+      const { user, cairn } = await ownerWithCairn();
+      const source = await service.create(user.id, cairn.id, file);
+      const stranger = await createUser(admin.db);
+
+      expect(await service.setTable(user.id, source.id, table)).toBe(false); // pending
+      await service.complete(user.id, source.id, [chunk('a')]);
+      expect(await service.setTable(stranger.id, source.id, table)).toBe(false);
+      expect(await service.setTable(user.id, randomUUID(), table)).toBe(false);
+      expect((await state(user.id, source.id)).rows).toEqual([]);
+    });
   });
 
   it('claims pending and failed sources for processing, but not ready ones', async () => {

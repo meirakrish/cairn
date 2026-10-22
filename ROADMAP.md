@@ -601,6 +601,34 @@ Open questions:
 - Decided: v1 queries one file at a time (no joins across files) and flat JSON only (no nested records). Dates in mixed formats are also out of scope.
 - Sealed callers: aggregates are not "copying" a source, but the VerbatimFilter must still run over the result rows.
 
+## Phase 15: table backfill (stopped after step 3)
+
+Branch `phase15/table-backfill` (from `phase14/table-queries`; rebase onto `main` once Phase 14 is merged). Asked for on 2026-10-21. CSV and JSON files ingested before Phase 14 have chunks but no `source_rows`, and a ready source can't be requeued, so they never get table queries. This phase reads their stored files again and adds only the rows: no re-embedding, no model calls, chunks untouched.
+
+| Step | What                                                                                                                                                                                         | Status  |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1    | Marker: `sources.table_checked_at` (migration 0015). `complete()` sets it on every ingest; null means "not looked at for a table yet". Migration leaves existing rows null                    | done    |
+| 2    | core `SourceService.setTable(userId, sourceId, table)` (replace rows + columns + marker, one transaction, no status change) and `IngestService.backfillTable(userId, sourceId)` (read the stored file, `readTable`, `setTable`) | planned |
+| 3    | Worker: job data gets an optional `task: 'table'`; the processor calls `backfillTable` for it (jobId `table-<sourceId>`, since a source's ingest job id is taken); a missing file or a source that went away is skipped, not failed | done    |
+| 4    | Script `pnpm backfill:tables` (admin DB URL + Redis): lists ready CSV/JSON/web-CSV/JSON sources with a null marker, enqueues one job each as the uploader (the cairn owner if the uploader is gone), prints counts; `--dry-run` | dropped |
+| 5    | Live check on the dev cairn: upload with Phase 13 code (or null a marker by hand), run the script, ask a counting question; docs: how to run it in minikube (`kubectl exec` / port-forward)  | dropped |
+
+Step 1 as built: migration 0015 adds `sources.table_checked_at` (nullable timestamptz, not exposed by the api). `SourceService.complete` sets it to `now()` on every completion, with a table or without. Existing sources stay null, including text and PDFs; the script (step 4) only looks at CSV and JSON kinds. Dev DB is migrated.
+
+Step 2 as built: `SourceService.setTable(userId, sourceId, table?)` updates `columns` and `table_checked_at` only where the source is `ready` (so a source being processed again keeps writing its own table), then replaces its rows (`replaceRows`, shared with `complete`); returns false for a source that is gone, not ready or not the caller's. It sends no change event and leaves `updated_at` alone. `IngestService.backfillTable(userId, sourceId)` returns `{ status: 'done', rows }` (0 rows = looked, no table) or `{ status: 'skipped', reason }` with reason `gone`, `not a table kind`, `not ready`, `already read` or `file missing`; it loads the stored file, runs `readTable`, and calls `setTable`. It never embeds or calls a model, and never fails a source.
+
+Step 3 as built: `IngestJob` has an optional `task: 'table'`; `ingestJobId(job)` is the source id for ingest and `table-<sourceId>` for the table task (BullMQ rejects `:` in custom ids, so the planned `table:<id>` could not work). `IngestQueue.enqueue` drops a *failed* table job with the same id first, so running the script again retries it (completed jobs stay, so a repeat is a no-op). The worker's processor sends `task: 'table'` to `backfillTable` and returns its result; errors are logged and rethrown for BullMQ's 3 attempts, and the source is never marked failed (a ready source stays ready). `removeOnFail` keeps failed jobs for 5000 entries, so one can sit there until the script is run again.
+
+Stopped on 2026-10-22: there are no existing CSV/JSON sources worth keeping, and uploading a file again does the same job as the script. Steps 1–3 stay (the marker, `setTable`/`backfillTable`, the `task: 'table'` job); nothing enqueues that job yet. If old tables turn up, the missing piece is step 4: a script that finds ready CSV/JSON sources with a null `table_checked_at` and calls `IngestQueue.enqueue({ sourceId, userId, task: 'table' })` for each.
+
+Design notes:
+
+- Why a marker: `columns` is null both for "never looked at" and for "looked, no table" (nested JSON, header-only CSV), so without it every run would re-read every non-table CSV/JSON.
+- Why a script and not startup work: it is a one-off like a migration; the worker and api run as users under RLS and can't list everyone's sources, while the script uses the admin URL only to find work and leaves the work itself to the worker as the uploader.
+- Safe to repeat: the marker makes a second run find nothing; a job that runs twice replaces the same rows. It doesn't touch `status`, so the UI shows nothing, and sources being ingested right now already write rows (they set the marker themselves).
+- Web sources that are CSV/JSON files are included (the stored snapshot is the file).
+- Not in scope: a user-facing "read again" button; re-running after a parser change (the marker could later hold a parser version instead of a timestamp).
+
 ## Current layout
 
 ```
@@ -669,4 +697,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 14 (table queries) is planned on `phase14/table-queries`; later: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
