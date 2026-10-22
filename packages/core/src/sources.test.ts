@@ -122,6 +122,16 @@ describe('SourceService', () => {
     expect(await stored()).toEqual({ rows: [], columns: null });
   });
 
+  it('marks a source as read for a table when it completes, whether it has one or not', async () => {
+    const { user, cairn } = await ownerWithCairn();
+    const source = await service.create(user.id, cairn.id, file);
+    expect(source.tableCheckedAt).toBeNull();
+
+    const plain = await service.complete(user.id, source.id, [chunk('a')]);
+    expect(plain.columns).toBeNull();
+    expect(plain.tableCheckedAt).toBeInstanceOf(Date);
+  });
+
   it('claims pending and failed sources for processing, but not ready ones', async () => {
     const { user, cairn } = await ownerWithCairn();
     const source = await service.create(user.id, cairn.id, file);

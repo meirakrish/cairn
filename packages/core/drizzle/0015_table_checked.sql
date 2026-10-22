@@ -1,0 +1,1 @@
+ALTER TABLE "sources" ADD COLUMN "table_checked_at" timestamp with time zone;

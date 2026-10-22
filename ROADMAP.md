@@ -607,11 +607,13 @@ Branch `phase15/table-backfill` (from `phase14/table-queries`; rebase onto `main
 
 | Step | What                                                                                                                                                                                         | Status  |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 1    | Marker: `sources.table_checked_at` (migration 0015). `complete()` sets it on every ingest; null means "not looked at for a table yet". Migration leaves existing rows null                    | planned |
+| 1    | Marker: `sources.table_checked_at` (migration 0015). `complete()` sets it on every ingest; null means "not looked at for a table yet". Migration leaves existing rows null                    | done    |
 | 2    | core `SourceService.setTable(userId, sourceId, table)` (replace rows + columns + marker, one transaction, no status change) and `IngestService.backfillTable(userId, sourceId)` (read the stored file, `readTable`, `setTable`) | planned |
 | 3    | Worker: job data gets an optional `task: 'table'`; the processor calls `backfillTable` for it (jobId `table:<sourceId>`, since a source's ingest job id is taken); a missing file or a source that went away is skipped, not failed | planned |
 | 4    | Script `pnpm backfill:tables` (admin DB URL + Redis): lists ready CSV/JSON/web-CSV/JSON sources with a null marker, enqueues one job each as the uploader (the cairn owner if the uploader is gone), prints counts; `--dry-run` | planned |
 | 5    | Live check on the dev cairn: upload with Phase 13 code (or null a marker by hand), run the script, ask a counting question; docs: how to run it in minikube (`kubectl exec` / port-forward)  | planned |
+
+Step 1 as built: migration 0015 adds `sources.table_checked_at` (nullable timestamptz, not exposed by the api). `SourceService.complete` sets it to `now()` on every completion, with a table or without. Existing sources stay null, including text and PDFs; the script (step 4) only looks at CSV and JSON kinds. Dev DB is migrated.
 
 Design notes:
 

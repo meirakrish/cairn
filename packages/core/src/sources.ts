@@ -229,6 +229,7 @@ export class SourceService {
           status: 'ready',
           error: null,
           columns: table?.columns ?? null,
+          tableCheckedAt: sql`now()`,
           updatedAt: sql`now()`,
         })
         .where(eq(sources.id, sourceId))
