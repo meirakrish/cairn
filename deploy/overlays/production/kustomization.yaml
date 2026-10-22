@@ -1,0 +1,41 @@
+# Whole stack in one namespace: infra from ../../base, apps from ../../base/app.
+# Copy secrets.env.example to secrets.env and edit config.env, the ingress host and the images.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cairn
+resources:
+  - namespace.yaml
+  - ../../base
+  - ../../base/app
+configMapGenerator:
+  - name: cairn-config
+    envs:
+      - config.env
+secretGenerator:
+  - name: cairn-secrets
+    envs:
+      - secrets.env
+images:
+  - name: cairn-api
+    newName: ghcr.io/meirakrish/cairn-api
+    newTag: latest
+  - name: cairn-worker
+    newName: ghcr.io/meirakrish/cairn-worker
+    newTag: latest
+  - name: cairn-web
+    newName: ghcr.io/meirakrish/cairn-web
+    newTag: latest
+  - name: cairn-migrate
+    newName: ghcr.io/meirakrish/cairn-migrate
+    newTag: latest
+patches:
+  - target: { kind: Ingress, name: cairn }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: cairn.example.com
+      - op: add
+        path: /spec/tls
+        value:
+          - hosts: [cairn.example.com]
+            secretName: cairn-tls

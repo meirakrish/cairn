@@ -629,6 +629,24 @@ Design notes:
 - Web sources that are CSV/JSON files are included (the stored snapshot is the file).
 - Not in scope: a user-facing "read again" button; re-running after a parser change (the marker could later hold a parser version instead of a timestamp).
 
+## Phase 16: Docker images and Kubernetes deploy
+
+Branch `phase16/k8s-deploy`. Asked for on 2026-10-22: run Cairn on publicly reachable hardware, Kubernetes-ready, with the LLM as an external service (Anthropic for chat).
+
+| Step | What                                                                                                        | Status  |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ------- |
+| 1    | `Dockerfile` (targets api, worker, web, migrate), `.dockerignore`, nginx template for the web image         | done    |
+| 2    | `deploy/base/app` (api, worker, web, migrate Job, Ingress) and `deploy/overlays/production`; README section | done    |
+| 3    | Build and push images in CI; a NetworkPolicy for the worker's egress; try the stack on a real cluster       | planned |
+
+Built: one multi-stage `Dockerfile`; the app images run `node dist/index.mjs` as `node` with production dependencies hoisted (`--shamefully-hoist`, since the bundles import core's dependencies from the apps' directory); `web` is nginx with `API_UPSTREAM` (default `api:3000`) and SSE unbuffered; `migrate` is the build stage running `pnpm db:migrate` with `DATABASE_ADMIN_URL`. The production overlay carries its own `namespace.yaml` (kustomize can't load files from a sibling overlay), generates `cairn-config` from `config.env` and `cairn-secrets` from `secrets.env` (gitignored; the example holds the full `DATABASE_URL`, `DATABASE_ADMIN_URL`, `REDIS_URL`, so passwords must agree across lines). Images are named `cairn-<app>` in the base and renamed by the overlay's `images:`.
+
+Decisions:
+
+- LLM is external: chat on Anthropic (`LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`), embeddings on an Ollama the user runs (`EMBED_PROVIDER=ollama`, `OLLAMA_HOST`), since Anthropic has no embeddings API and llm-kit supports only Ollama and OpenAI for embeddings. `@langchain/anthropic` and `@langchain/openai` were added to the api and worker (llm-kit's optional peers).
+- Bug fixed on the way: the api and worker bundles inlined jsdom (a dependency of core, not of the apps), which crashed at start. `tsdown.config.ts` now keeps core's dependencies external.
+- Not checked yet: vision (images, scanned PDFs) and the "thinking off" probe with Anthropic as the chat model; the stack on a real cluster; `migrate` after the first deploy needs Postgres up (the Job retries 6 times).
+
 ## Current layout
 
 ```
@@ -639,7 +657,10 @@ packages/eval    retrieval eval: corpus/, questions.json, src/run.ts (`pnpm eval
 packages/shared  zod schemas/types (HealthResponse, User, MeResponse)
 packages/core    src/testing/ (@cairn/core/testing: testEnv, global-setup, createTestDbs, resetDb, createUser); src/db: Drizzle schema (users, cairns, sources, chunks + RLS policies), createDb(), withUser(); src/users.ts (upsertGoogleUser, getUser); src/cairns.ts (CairnService); src/sources.ts (SourceService, storageKey); src/errors.ts (NotFoundError); src/storage.ts (ObjectStore, S3ObjectStore, MemoryObjectStore); src/ingest-queue.ts (IngestQueue); src/ingest/ (extract, chunk, csv, json, records, image, IngestService); src/retrieval/ (RetrievalService, keywordQuery, DEFAULT_KEYWORD_WEIGHT); src/shares.ts (ShareService, cairnAccess, hashShareToken); src/answer/ (AnswerService, buildMessages, citedNumbers); src/quiz/ (QuizService, prompts, verdictOf); src/events.ts (channel, sourceDto, redisSourcePublisher); src/testing/pdf.ts (makePdf); drizzle/ SQL migrations
 deploy/base      postgres/ (pgvector pg17, init-db.sh), redis/, garage/ (garage.toml, bootstrap Job)
+deploy/base/app  api, worker, web, migrate Job, Ingress (image names cairn-<app>)
 deploy/overlays/minikube  namespace cairn, cairn-secrets from secrets.env, resource limits
+deploy/overlays/production  infra + apps, config.env, secrets.env, images, Ingress host/TLS
+Dockerfile, deploy/docker/nginx.conf.template  images api, worker, web, migrate
 scripts/infra-forward.sh  port-forwards with auto-retry
 .github/workflows/ci.yml  CI
 ```
@@ -696,4 +717,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 16 step 3 (CI image builds, then the worker NetworkPolicy); a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

@@ -61,6 +61,21 @@ Apps run on WSL with `pnpm dev`; Postgres (pgvector), Redis and Garage (S3-compa
    pnpm dev
    ```
 
+## Production (Kubernetes)
+
+The `Dockerfile` has one target per image: `api`, `worker`, `web` (nginx: the SPA, and `/api` proxied to the api with SSE unbuffered) and `migrate` (a one-off Job). `deploy/overlays/production` deploys the whole stack (Postgres, Redis, Garage and the apps) behind one Ingress host. Nothing runs a model: the LLM is an external service.
+
+1. Build and push the images, then set their names in `deploy/overlays/production/kustomization.yaml`:
+
+   ```bash
+   for t in api worker web migrate; do docker build --target $t -t ghcr.io/<you>/cairn-$t:<tag> . && docker push ghcr.io/<you>/cairn-$t:<tag>; done
+   ```
+
+2. `cp deploy/overlays/production/secrets.env.example deploy/overlays/production/secrets.env` and fill it in (passwords, the URLs built from them, Google OAuth, API keys). Edit `config.env` (`APP_ORIGIN`, models) and the Ingress host and TLS secret in `kustomization.yaml`. Add `<APP_ORIGIN>/api/auth/google/callback` to the Google OAuth client.
+3. `kubectl apply -k deploy/overlays/production`. After a deploy that adds a migration, delete the `migrate` Job first so it runs again.
+
+LLM settings (`LLM_PROVIDER`, `ANTHROPIC_API_KEY`, ...) are llm-kit's. Anthropic has no embeddings API, so embeddings come from an Ollama you run (`EMBED_PROVIDER=ollama`, `OLLAMA_HOST`, `qwen3-embedding:0.6b`; keep it off the public internet). llm-kit also offers OpenAI embeddings (`EMBED_PROVIDER=openai`, `text-embedding-3-small` at 1024 dimensions). A cairn keeps the embedding model it was created with.
+
 ## Commands
 
 | Command              | What it does                                                      |

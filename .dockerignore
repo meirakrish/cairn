@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/build
+**/.svelte-kit
+.git
+.github
+.env
+.env.*
+!.env.example
+deploy/base
+deploy/overlays
+coverage
+packages/eval/results
+*.md
