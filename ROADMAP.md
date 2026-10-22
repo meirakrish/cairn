@@ -615,6 +615,8 @@ Branch `phase15/table-backfill` (from `phase14/table-queries`; rebase onto `main
 
 Step 1 as built: migration 0015 adds `sources.table_checked_at` (nullable timestamptz, not exposed by the api). `SourceService.complete` sets it to `now()` on every completion, with a table or without. Existing sources stay null, including text and PDFs; the script (step 4) only looks at CSV and JSON kinds. Dev DB is migrated.
 
+Step 2 as built: `SourceService.setTable(userId, sourceId, table?)` updates `columns` and `table_checked_at` only where the source is `ready` (so a source being processed again keeps writing its own table), then replaces its rows (`replaceRows`, shared with `complete`); returns false for a source that is gone, not ready or not the caller's. It sends no change event and leaves `updated_at` alone. `IngestService.backfillTable(userId, sourceId)` returns `{ status: 'done', rows }` (0 rows = looked, no table) or `{ status: 'skipped', reason }` with reason `gone`, `not a table kind`, `not ready`, `already read` or `file missing`; it loads the stored file, runs `readTable`, and calls `setTable`. It never embeds or calls a model, and never fails a source.
+
 Design notes:
 
 - Why a marker: `columns` is null both for "never looked at" and for "looked, no table" (nested JSON, header-only CSV), so without it every run would re-read every non-table CSV/JSON.

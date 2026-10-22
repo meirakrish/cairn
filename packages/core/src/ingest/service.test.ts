@@ -3,7 +3,15 @@ import sharp from 'sharp';
 import { ContextOverflowError, type LlmClient } from '@meirakrish/llm-kit';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { CairnService } from '../cairns';
-import { EMBEDDING_DIMENSIONS, sourceRows, withUser, type SourceKind } from '../db';
+import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import {
+  EMBEDDING_DIMENSIONS,
+  sourceRows,
+  sources as sources_,
+  withUser,
+  type SourceKind,
+} from '../db';
 import { SourceService } from '../sources';
 import { LlmModerator } from '../moderation';
 import { MemoryObjectStore } from '../storage';
@@ -142,6 +150,81 @@ describe('IngestService', () => {
       expect((await sources.get(user.id, source.id))?.columns).toBeNull();
     }
     expect(await admin.db.select().from(sourceRows)).toEqual([]);
+  });
+
+  describe('backfillTable', () => {
+    const csv = 'route,km\nNorth,12\nSouth,7.5';
+
+    /** A source as ingested before table queries: ready, with chunks, no rows, never read for a table. */
+    async function oldSource(kind: SourceKind, text: string) {
+      const { cairns, ingest } = setup();
+      const { user, source } = await uploaded(cairns, kind, utf8(text));
+      await ingest.process(user.id, source.id);
+      await admin.db.delete(sourceRows);
+      await admin.db.update(sources_).set({ columns: null, tableCheckedAt: null });
+      return { user, source, ingest };
+    }
+    const rowsOf = (userId: string) =>
+      withUser(app.db, userId, (tx) => tx.select().from(sourceRows).orderBy(sourceRows.row));
+
+    it('adds the rows and columns from the stored file and leaves the chunks', async () => {
+      const { user, source, ingest } = await oldSource('csv', csv);
+      const before = await sources.listChunks(user.id, source.id);
+
+      expect(await ingest.backfillTable(user.id, source.id)).toEqual({ status: 'done', rows: 2 });
+
+      expect((await rowsOf(user.id)).map((r) => r.data)).toEqual([
+        { route: 'North', km: 12 },
+        { route: 'South', km: 7.5 },
+      ]);
+      const after = await sources.get(user.id, source.id);
+      expect(after?.columns).toEqual([
+        { name: 'route', type: 'text' },
+        { name: 'km', type: 'number' },
+      ]);
+      expect(after?.tableCheckedAt).toBeInstanceOf(Date);
+      expect(await sources.listChunks(user.id, source.id)).toEqual(before);
+    });
+
+    it('records a file with no table, and reads each file once', async () => {
+      const { user, source, ingest } = await oldSource('json', '{"a":{"b":1}}');
+
+      expect(await ingest.backfillTable(user.id, source.id)).toEqual({ status: 'done', rows: 0 });
+      expect((await sources.get(user.id, source.id))?.tableCheckedAt).toBeInstanceOf(Date);
+      expect(await ingest.backfillTable(user.id, source.id)).toEqual({
+        status: 'skipped',
+        reason: 'already read',
+      });
+    });
+
+    it('skips other kinds, sources not ready, missing files and unknown sources', async () => {
+      const text = await oldSource('text', 'hello');
+      expect(await text.ingest.backfillTable(text.user.id, text.source.id)).toEqual({
+        status: 'skipped',
+        reason: 'not a table kind',
+      });
+
+      const notReady = await oldSource('csv', csv);
+      await admin.db
+        .update(sources_)
+        .set({ status: 'pending' })
+        .where(eq(sources_.id, notReady.source.id));
+      expect(await notReady.ingest.backfillTable(notReady.user.id, notReady.source.id)).toEqual({
+        status: 'skipped',
+        reason: 'not ready',
+      });
+
+      const missing = await oldSource('csv', csv);
+      await storage.delete(missing.source.storageKey);
+      expect(await missing.ingest.backfillTable(missing.user.id, missing.source.id)).toEqual({
+        status: 'skipped',
+        reason: 'file missing',
+      });
+      expect(await missing.ingest.backfillTable(missing.user.id, randomUUID())).toEqual({
+        status: 'skipped',
+        reason: 'gone',
+      });
+    });
   });
 
   it('stores a web page as heading sections, decoded with its charset', async () => {

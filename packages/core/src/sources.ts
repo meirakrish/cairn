@@ -10,6 +10,7 @@ import {
   type Db,
   type Source,
   type SourceKind,
+  type Tx,
 } from './db';
 import { NotFoundError } from './errors';
 import type { SourceChange, SourceChangeListener } from './events';
@@ -214,15 +215,7 @@ export class SourceService {
           })),
         );
       }
-      await tx.delete(sourceRows).where(eq(sourceRows.sourceId, sourceId));
-      const rows = table?.rows ?? [];
-      for (let i = 0; i < rows.length; i += ROW_BATCH) {
-        await tx
-          .insert(sourceRows)
-          .values(
-            rows.slice(i, i + ROW_BATCH).map((r) => ({ cairnId: source.cairnId, sourceId, ...r })),
-          );
-      }
+      await replaceRows(tx, source, table);
       const [ready] = await tx
         .update(sources)
         .set({
@@ -238,6 +231,25 @@ export class SourceService {
     });
     await this.notify({ kind: 'changed', source: ready });
     return ready;
+  }
+
+  /**
+   * Stores the table read from a ready source's file, or records that it has none: replaces its
+   * rows and columns and sets table_checked_at, leaving chunks and status alone (no change event).
+   * For sources ingested before table queries existed. Returns false, changing nothing, if the
+   * source is gone or not ready (one being processed writes its own table when it completes).
+   */
+  async setTable(userId: string, sourceId: string, table?: ParsedTable): Promise<boolean> {
+    return withUser(this.db, userId, async (tx) => {
+      const [source] = await tx
+        .update(sources)
+        .set({ columns: table?.columns ?? null, tableCheckedAt: sql`now()` })
+        .where(and(eq(sources.id, sourceId), eq(sources.status, 'ready')))
+        .returning();
+      if (!source) return false;
+      await replaceRows(tx, source, table);
+      return true;
+    });
   }
 
   /** Marks the source failed with a short, user-facing reason. */
@@ -287,5 +299,20 @@ export class SourceService {
         .where(eq(chunks.sourceId, sourceId))
         .orderBy(asc(chunks.ordinal)),
     );
+  }
+}
+
+/** Replaces a source's table rows with those of `table` (none if undefined). */
+async function replaceRows(tx: Tx, source: Source, table?: ParsedTable): Promise<void> {
+  await tx.delete(sourceRows).where(eq(sourceRows.sourceId, source.id));
+  const rows = table?.rows ?? [];
+  for (let i = 0; i < rows.length; i += ROW_BATCH) {
+    await tx
+      .insert(sourceRows)
+      .values(
+        rows
+          .slice(i, i + ROW_BATCH)
+          .map((r) => ({ cairnId: source.cairnId, sourceId: source.id, ...r })),
+      );
   }
 }

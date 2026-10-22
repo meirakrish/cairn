@@ -34,6 +34,13 @@ export type IngestResult =
   | { status: 'rejected'; category: ModerationCategory }
   | { status: 'skipped'; reason: 'gone' | 'already ready' };
 
+export type BackfillResult =
+  | { status: 'done'; rows: number }
+  | {
+      status: 'skipped';
+      reason: 'gone' | 'not a table kind' | 'not ready' | 'already read' | 'file missing';
+    };
+
 /**
  * Turns one stored source into embedded chunks: extract → chunk → embed → store, as the uploader.
  * Throws PermanentIngestError for problems with the file itself; anything else may be retried.
@@ -110,6 +117,37 @@ export class IngestService {
       throw err;
     }
     return { status: 'ready', chunks: chunks.length };
+  }
+
+  /**
+   * Reads a ready CSV or JSON source's stored file for a table, for sources ingested before table
+   * queries existed: stores the rows and columns (or records that there are none) and touches
+   * nothing else: no chunks, no embedding, no model, no status change. Does nothing for other
+   * kinds, sources not ready or already read, and files gone from storage.
+   */
+  async backfillTable(userId: string, sourceId: string): Promise<BackfillResult> {
+    const { sources, storage } = this.deps;
+    const source = await sources.get(userId, sourceId);
+    if (!source) return { status: 'skipped', reason: 'gone' };
+    if (source.kind !== 'csv' && source.kind !== 'json') {
+      return { status: 'skipped', reason: 'not a table kind' };
+    }
+    if (source.status !== 'ready') return { status: 'skipped', reason: 'not ready' };
+    if (source.tableCheckedAt) return { status: 'skipped', reason: 'already read' };
+
+    let data: Uint8Array;
+    try {
+      data = await storage.get(source.storageKey);
+    } catch (err) {
+      if (err instanceof NotFoundError) return { status: 'skipped', reason: 'file missing' };
+      throw err;
+    }
+    const table = readTable(source.kind, data);
+    // False: it was deleted or sent to be processed again meanwhile, which stores its own table.
+    if (!(await sources.setTable(userId, sourceId, table))) {
+      return { status: 'skipped', reason: 'not ready' };
+    }
+    return { status: 'done', rows: table?.rows.length ?? 0 };
   }
 
   private async load(source: Source): Promise<Uint8Array> {
