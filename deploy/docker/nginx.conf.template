@@ -1,0 +1,22 @@
+server {
+  listen 80;
+  root /usr/share/nginx/html;
+
+  # Uploads are capped by the api (UPLOAD_MAX_MEGA_BYTES); leave room for multipart overhead.
+  client_max_body_size 30m;
+
+  location /api/ {
+    proxy_pass http://${API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    # Answers and source updates are Server-Sent Events: no buffering, long reads.
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

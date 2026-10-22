@@ -11,7 +11,9 @@
   "dependencies": {
     "@cairn/core": "workspace:*",
     "@cairn/shared": "workspace:*",
+    "@langchain/anthropic": "^1.5.13",
     "@langchain/core": "^1.2.18",
+    "@langchain/openai": "^1.6.3",
     "@meirakrish/llm-kit": "^0.3.0",
     "busboy": "^1.6.0",
     "cookie": "^2.0.1",
