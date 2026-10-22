@@ -668,7 +668,6 @@ scripts/infra-forward.sh  port-forwards with auto-retry
 - Composite-key and unique violations fire in index order: a test meant to hit `chunks_source_fk` hit `chunks_source_ordinal_key` first. Pick values that only break the constraint under test.
 - Ollama is reached from WSL at the Windows host IP (`OLLAMA_HOST=http://172.19.208.1:11434` today; it can change after a reboot). The Windows firewall rules `ollama.exe` are limited to `172.16.0.0/12` with edge traversal blocked (UDP rule disabled), because the PC has public IPv6 addresses.
 - pnpm's `minimumReleaseAge` rejects packages published in the last day. When `pnpm add` offers to add a `minimumReleaseAgeExclude`, don't: pin a slightly older version instead (e.g. `bullmq@~6.3.15`). If a too-new version already landed in the lockfile, restore `pnpm-lock.yaml` and the package.json files first.
-- TODO after 2026-10-21 ~21:00 UTC: remove the `minimumReleaseAgeExclude` entry for `@meirakrish/llm-kit@0.3.0` in `pnpm-workspace.yaml` (added because the release was minutes old; only our own package may go there). All packages use llm-kit `^0.3.0`.
 - `msgpackr-extract` (bullmq's optional native helper) is `false` in `allowBuilds`: prebuilt binaries are enough.
 - Express 5 types `req.params` values as `string | string[]`; use `idParam()` in `apps/api/src/cairns.ts`.
 - Worker shutdown takes a few seconds: `worker.close()` waits for BullMQ's blocking Redis poll to return.
