@@ -65,7 +65,7 @@ Apps run on WSL with `pnpm dev`; Postgres (pgvector), Redis and Garage (S3-compa
 
 The `Dockerfile` has one target per image: `api`, `worker`, `web` (nginx: the SPA, and `/api` proxied to the api with SSE unbuffered) and `migrate` (a one-off Job). `deploy/overlays/production` deploys the whole stack (Postgres, Redis, Garage and the apps) behind one Ingress host. Nothing runs a model: the LLM is an external service.
 
-1. Build and push the images, then set their names in `deploy/overlays/production/kustomization.yaml`:
+1. Build and push the images: Actions tab → Images → Run workflow (or push a tag like `v0.1.0`). They go to `ghcr.io/<owner>/cairn-<api|worker|web|migrate>` tagged with the commit SHA (or the tag) and `latest`; make the packages public, or add an image pull secret. Set the names in `deploy/overlays/production/kustomization.yaml`. By hand:
 
    ```bash
    for t in api worker web migrate; do docker build --target $t -t ghcr.io/<you>/cairn-$t:<tag> . && docker push ghcr.io/<you>/cairn-$t:<tag>; done
@@ -75,6 +75,8 @@ The `Dockerfile` has one target per image: `api`, `worker`, `web` (nginx: the SP
 3. `kubectl apply -k deploy/overlays/production`. After a deploy that adds a migration, delete the `migrate` Job first so it runs again.
 
 LLM settings (`LLM_PROVIDER`, `ANTHROPIC_API_KEY`, ...) are llm-kit's. Anthropic has no embeddings API, so embeddings come from an Ollama you run (`EMBED_PROVIDER=ollama`, `OLLAMA_HOST`, `qwen3-embedding:0.6b`; keep it off the public internet). llm-kit also offers OpenAI embeddings (`EMBED_PROVIDER=openai`, `text-embedding-3-small` at 1024 dimensions). A cairn keeps the embedding model it was created with.
+
+The worker fetches user-supplied URLs, so a NetworkPolicy (`worker-egress`) limits its egress to Postgres, Redis, Garage, DNS, and ports 80/443 on public addresses. It needs a CNI that enforces policies (Calico, Cilium; minikube's default does not). Set the Ollama address and port in the overlay's `worker-egress` patch (`10.0.0.5/32` is a placeholder) to match `OLLAMA_HOST`.
 
 ## Commands
 

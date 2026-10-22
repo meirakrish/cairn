@@ -57,3 +57,5 @@ jobs:
       # secrets.env is gitignored; the example has the same keys, which is all the secretGenerator needs.
       - run: cp deploy/overlays/minikube/secrets.env.example deploy/overlays/minikube/secrets.env
       - run: kubectl kustomize deploy/overlays/minikube > /dev/null
+      - run: cp deploy/overlays/production/secrets.env.example deploy/overlays/production/secrets.env
+      - run: kubectl kustomize deploy/overlays/production > /dev/null
