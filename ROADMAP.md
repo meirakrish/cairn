@@ -637,9 +637,13 @@ Branch `phase16/k8s-deploy`. Asked for on 2026-10-22: run Cairn on publicly reac
 | ---- | ----------------------------------------------------------------------------------------------------------- | ------- |
 | 1    | `Dockerfile` (targets api, worker, web, migrate), `.dockerignore`, nginx template for the web image         | done    |
 | 2    | `deploy/base/app` (api, worker, web, migrate Job, Ingress) and `deploy/overlays/production`; README section | done    |
-| 3    | Build and push images in CI; a NetworkPolicy for the worker's egress; try the stack on a real cluster       | planned |
+| 3    | CI workflow `images.yml`: builds and pushes the four images to GHCR (by hand or on a `v*` tag); `ci.yml` renders the production overlay | done    |
+| 4    | NetworkPolicy `worker-egress` (base/app); the overlay adds the Ollama address                                | done    |
+| 5    | Try the stack on a real cluster (needs a CNI that enforces policies; test the policy from a pod in the worker's place) | planned |
 
 Built: one multi-stage `Dockerfile`; the app images run `node dist/index.mjs` as `node` with production dependencies hoisted (`--shamefully-hoist`, since the bundles import core's dependencies from the apps' directory); `web` is nginx with `API_UPSTREAM` (default `api:3000`) and SSE unbuffered; `migrate` is the build stage running `pnpm db:migrate` with `DATABASE_ADMIN_URL`. The production overlay carries its own `namespace.yaml` (kustomize can't load files from a sibling overlay), generates `cairn-config` from `config.env` and `cairn-secrets` from `secrets.env` (gitignored; the example holds the full `DATABASE_URL`, `DATABASE_ADMIN_URL`, `REDIS_URL`, so passwords must agree across lines). Images are named `cairn-<app>` in the base and renamed by the overlay's `images:`.
+
+Steps 3–4 as built (branch `phase16/ci-images-netpol`): `.github/workflows/images.yml` (manual or `v*` tag; matrix over the four targets; GHCR with `GITHUB_TOKEN`; tags `<sha or tag>` and `latest`; gha build cache). `ci.yml`'s deploy job also renders `deploy/overlays/production`. `deploy/base/app/networkpolicy.yaml`: the worker may reach postgres, redis and garage pods, kube-dns, and 80/443 on 0.0.0.0/0 minus private/special ranges; the production overlay appends an Ollama rule (`10.0.0.5/32:11434` is a placeholder). IPv4 only; not enforced by minikube's default CNI. Not checked on a cluster yet. The api and web have no policy.
 
 Decisions:
 
@@ -717,4 +721,4 @@ pnpm lint && pnpm typecheck && pnpm format:check && pnpm build && pnpm test
 
 ## Later phases
 
-**Next: Phase 16 step 3 (CI image builds, then the worker NetworkPolicy); a NetworkPolicy limiting the worker's egress to public IPs; later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.
+**Next: Phase 16 step 5 (try the stack on a real cluster); later: API keys and the MCP server (DESIGN.md "Next stage").** Phase 5 is above. Phase 4 is above. See the Scope section of DESIGN.md: Phase 2 ingest (llm-kit v0.2: embeddings), Phase 3 query, Phase 4 sharing.

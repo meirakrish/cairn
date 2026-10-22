@@ -39,3 +39,12 @@ patches:
         value:
           - hosts: [cairn.example.com]
             secretName: cairn-tls
+  # Where the worker may reach Ollama (the address and port of OLLAMA_HOST in config.env).
+  - target: { kind: NetworkPolicy, name: worker-egress }
+    patch: |-
+      - op: add
+        path: /spec/egress/-
+        value:
+          to:
+            - ipBlock: { cidr: 10.0.0.5/32 }
+          ports: [{ port: 11434 }]

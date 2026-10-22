@@ -1,0 +1,53 @@
+name: Images
+
+# Builds the four images (api, worker, web, migrate) and pushes them to GHCR as
+# ghcr.io/<owner>/cairn-<target>:<tag> and :latest. Run by hand from the Actions tab
+# (tag defaults to the commit SHA), or push a tag like v0.1.0.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag (defaults to the commit SHA)
+        required: false
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker, web, migrate]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: tag
+        run: |
+          tag="${{ inputs.tag }}"
+          [ -n "$tag" ] || tag="${{ github.ref_type == 'tag' && github.ref_name || github.sha }}"
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/cairn-${{ matrix.target }}:${{ steps.tag.outputs.value }}
+            ghcr.io/${{ github.repository_owner }}/cairn-${{ matrix.target }}:latest
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,scope=${{ matrix.target }},mode=max
